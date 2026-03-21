@@ -40,6 +40,8 @@ const CR        = 0x000D;
 const ESCAPE    = 0x001B;
 const BACKSPACE = 0x007F;
 
+export type Encoding = 'utf-8'|'latin1'|'ascii';
+
 export interface GetPassOptions {
     /**
      * Prompt to display.
@@ -51,7 +53,7 @@ export interface GetPassOptions {
      * Parse input to string using this encoding.
      * @default 'utf-8'
      */
-    encoding?: BufferEncoding;
+    encoding?: Encoding;
 
     /**
      * Print this character when the user types.
@@ -76,12 +78,10 @@ export interface GetPassOptions {
  */
 export async function getPass(options?: GetPassOptions|string): Promise<string|null> {
     let prompt = 'Password: ';
-    let encoding: BufferEncoding = 'utf-8';
+    let encoding: Encoding = 'utf-8';
     let echoChar = '*';
     let echoRepeatMin = 0;
     let echoRepeatMax = 0;
-    // TODO: handle utf8 and don't backspace through half a codepoint
-    //const utf8 = encoding === 'utf-8';
 
     if (typeof options === 'string') {
         prompt = options;
@@ -119,10 +119,12 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
             echoChar = oEchoChar;
             if (oEchoRepeat === undefined) {
                 echoRepeatMin = 1;
-                echoRepeatMax = 2;
+                echoRepeatMax = 1;
             }
         }
     }
+
+    const utf8 = encoding === 'utf-8';
 
     const { rfd, wfd } = await openTTY();
     let rtty: tty.ReadStream|undefined;
@@ -193,7 +195,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
 
                 buffer = await readPromise;
 
-                if (!buffer || ended) {
+                if (!buffer?.length || ended) {
                     ended = true;
                     return -1;
                 }
@@ -202,21 +204,103 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
             return buffer[offset ++];
         }
 
+        async function peekByte(): Promise<number> {
+            if (!buffer || offset >= buffer.byteLength) {
+                if (ended) {
+                    return -1;
+                }
+
+                offset = 0;
+                buffer = null;
+
+                if (!readPromise) {
+                    readPromise = new Promise((resolve, reject) => {
+                        readResolve = resolve;
+                        readReject  = reject;
+                    });
+                }
+
+                buffer = await readPromise;
+
+                if (!buffer?.length || ended) {
+                    ended = true;
+                    return -1;
+                }
+            }
+
+            return buffer[offset];
+        }
+
         try {
             const passwordBytes: number[] = [];
-            const widths: number[] = [];
+            const widths: { bytes: number, width: number }[] = [];
             let pasteNesting = 0;
 
-            function appendByte(byte: number): void {
+            async function appendByte(byte: number): Promise<void> {
                 passwordBytes.push(byte);
 
+                let byteCount = 1;
+                if (utf8) {
+                    if (byte >= 0xC0) {
+                        // UTF-8 multi-byte sequence
+                        if (byte >= 0xF0) {
+                            // 4 bytes
+                            byte = await peekByte();
+                            if (isCont(byte)) {
+                                ++ offset;
+                                ++ byteCount;
+                                passwordBytes.push(byte);
+
+                                byte = await peekByte();
+                                if (isCont(byte)) {
+                                    ++ offset;
+                                    ++ byteCount;
+                                    passwordBytes.push(byte);
+
+                                    byte = await peekByte();
+                                    if (isCont(byte)) {
+                                        ++ offset;
+                                        ++ byteCount;
+                                        passwordBytes.push(byte);
+                                    }
+                                }
+                            }
+                        } else if (byte >= 0xE0) {
+                            // 3 bytes
+                            byte = await peekByte();
+                            if (isCont(byte)) {
+                                ++ offset;
+                                ++ byteCount;
+                                passwordBytes.push(byte);
+
+                                byte = await peekByte();
+                                if (isCont(byte)) {
+                                    ++ offset;
+                                    ++ byteCount;
+                                    passwordBytes.push(byte);
+                                }
+                            }
+                        } else {
+                            // 2 bytes
+                            byte = await peekByte();
+                            if (isCont(byte)) {
+                                ++ offset;
+                                ++ byteCount;
+                                passwordBytes.push(byte);
+                            }
+                        }
+                    }
+                }
+
+                let width = 0;
                 if (echoRepeatMax) {
                     const echo =
                         echoRepeatMin === echoRepeatMax ? echoChar :
                         echoChar.repeat(randomInt(echoRepeatMin, echoRepeatMax + 1));
                     wtty?.write(echo);
-                    widths.push(echo.length);
+                    width = echo.length;
                 }
+                widths.push({ bytes: byteCount, width });
             }
 
             for (;;) {
@@ -327,7 +411,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
 
                         if (byte === 0x4D) { // 'M'
                             // Shift+Enter -> '\n'
-                            appendByte(LF);
+                            await appendByte(LF);
                         } else if (
                             (byte >= 0x41 && byte <= 0x5A) || // 'A' ... 'Z'
                             (byte >= 0x61 && byte <= 0x7A)    // 'a' ... 'z'
@@ -342,7 +426,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
                         return null;
                     }
                 } else if (pasteNesting) {
-                    appendByte(byte === CR ? LF : byte);
+                    await appendByte(byte === CR ? LF : byte);
                 } else if (byte === CTRLD || byte === LF || byte === CR || byte === 0) {
                     break;
                 } else {
@@ -354,12 +438,18 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
                             passwordBytes.pop();
                             const width = widths.pop();
                             if (width) {
-                                wtty.write(`\x1B[${width}D\x1B[K`)
+                                if (width.width) {
+                                    wtty.write(`\x1B[${width.width}D\x1B[K`)
+                                }
+                                let bytes = width.bytes - 1;
+                                while (bytes --) {
+                                    passwordBytes.pop();
+                                }
                             }
                             break;
 
                         default:
-                            appendByte(byte);
+                            await appendByte(byte);
                             break;
                     }
                 }
@@ -432,4 +522,8 @@ async function openTTY(): Promise<TTY> {
 
         throw error;
     }
+}
+
+function isCont(byte: number): boolean {
+    return byte >= 0x80 && byte < 0xC0;
 }
