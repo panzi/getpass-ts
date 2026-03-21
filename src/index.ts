@@ -1,6 +1,7 @@
 /*
- * Copyright 2016, Joyent, Inc. All rights reserved.
- * Author: Alex Wilson <alex.wilson@joyent.com>
+ * Very much inspired by https://github.com/arekinath/node-getpass
+ *    Copyright 2016, Joyent, Inc. All rights reserved.
+ *    Author: Alex Wilson <alex.wilson@joyent.com>
  * 
  * Copyright 2026 Mathias Panzenböck
  *
@@ -23,8 +24,6 @@
  * IN THE SOFTWARE.
 */
 
-// Inspired by: https://github.com/arekinath/node-getpass
-
 import tty from 'tty';
 import fs from 'fs/promises';
 import { randomInt } from 'crypto';
@@ -40,8 +39,14 @@ const CR        = 0x000D;
 const ESCAPE    = 0x001B;
 const BACKSPACE = 0x007F;
 
+/**
+ * Encodings supported by `getPass()`.
+ */
 export type Encoding = 'utf-8'|'latin1'|'ascii'|'binary';
 
+/**
+ * Options for `getPass()`.
+ */
 export interface GetPassOptions {
     /**
      * Prompt to display.
@@ -72,13 +77,82 @@ export interface GetPassOptions {
     echoRepeat?: [number, number];
 }
 
+/**
+ * Read a password from the terminal, decoded as a string from UTF-8.
+ * 
+ * The user can delete the entered password via backspace, but no other editing
+ * features are supported at the moment.
+ * 
+ * The input is accepted when the user hits Ctrl+D, or when a new line, carriage
+ * return, or null byte is read.
+ * 
+ * The user can abort by pressing Escape, Ctrl+C, or by a premature end of the
+ * input stream.
+ * 
+ * @returns The password or `null` if the user aborted.
+ */
+export async function getPass(prompt?: string): Promise<string|null>;
+
+/**
+ * Read a password from the terminal, decoded as a string from the given encoding.
+ * 
+ * The user can delete the entered password via backspace, but no other editing
+ * features are supported at the moment.
+ * 
+ * The input is accepted when the user hits Ctrl+D, or when a new line, carriage
+ * return, or null byte is read.
+ * 
+ * The user can abort by pressing Escape, Ctrl+C, or by a premature end of the
+ * input stream.
+ * 
+ * @returns The password or `null` if the user aborted.
+ */
 export async function getPass(options: GetPassOptions & { encoding: 'utf-8'|'latin1'|'ascii' }): Promise<string|null>;
+
+/**
+ * Read a password from the terminal as a `Buffer`.
+ * 
+ * The user can delete the entered password via backspace, but no other editing
+ * features are supported at the moment.
+ * 
+ * The input is accepted when the user hits Ctrl+D, or when a new line, carriage
+ * return, or null byte is read.
+ * 
+ * The user can abort by pressing Escape, Ctrl+C, or by a premature end of the
+ * input stream.
+ * 
+ * @returns The password or `null` if the user aborted.
+ */
 export async function getPass(options: GetPassOptions & { encoding: 'binary' }): Promise<Buffer|null>;
-export async function getPass(options: GetPassOptions): Promise<string|Buffer|null>;
-export async function getPass(options?: string): Promise<string|null>;
 
 /**
  * Read a password from the terminal.
+ * 
+ * The user can delete the entered password via backspace, but no other editing
+ * features are supported at the moment.
+ * 
+ * The input is accepted when the user hits Ctrl+D, or when a new line, carriage
+ * return, or null byte is read.
+ * 
+ * The user can abort by pressing Escape, Ctrl+C, or by a premature end of the
+ * input stream.
+ * 
+ * @returns The password or `null` if the user aborted.
+ */
+export async function getPass(options: GetPassOptions): Promise<string|Buffer|null>;
+
+/**
+ * Read a password from the terminal.
+ * 
+ * The user can delete the entered password via backspace, but no other editing
+ * features are supported at the moment.
+ * 
+ * The input is accepted when the user hits Ctrl+D, or when a new line, carriage
+ * return, or null byte is read.
+ * 
+ * The user can abort by pressing Escape, Ctrl+C, or by a premature end of the
+ * input stream.
+ * 
  * @returns The password or `null` if the user aborted.
  */
 export async function getPass(options?: GetPassOptions|string): Promise<string|Buffer|null> {
@@ -450,12 +524,10 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                                     }
                                 } else {
                                     // XXX: unknown/broken escape sequence
-                                    return null;
                                 }
                             }
                         } else {
                             // XXX: unknown/broken escape sequence
-                            return null;
                         }
                     } else if (byte === 0x4F) { // 'O'
                         byte = await readByte();
@@ -473,11 +545,9 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                             // function keys and such
                         } else {
                             // XXX: unknown/broken escape sequence
-                            return null;
                         }
                     } else {
                         // XXX: unknown/broken escape sequence
-                        return null;
                     }
                 } else if (pasteNesting) {
                     await appendByte(byte === CR ? LF : byte);
