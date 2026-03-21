@@ -2,7 +2,7 @@ getpass
 =======
 
 [![Release](https://img.shields.io/github/v/tag/panzi/getpass-ts)](https://github.com/panzi/getpass-ts/tags)
-[![MIT License](https://img.shields.io/github/license/panzi/getpass-ts)](https://github.com/panzi/getpass-ts/?tab=readme-ov-file#MIT_License)
+[![MIT License](https://img.shields.io/github/license/panzi/getpass-ts)](https://github.com/panzi/getpass-ts/blob/main/LICENSE.txt)
 
 Simple CLI password prompt for NodeJS for Unix(-like) operating systems. This
 is inspired by [arekinath/node-getpas](https://github.com/arekinath/node-getpass),
@@ -59,23 +59,7 @@ return, or null byte is read.
 The user can abort by pressing Escape, Ctrl+C, or by a premature end of the
 input stream.
 
-MIT License
------------
+License
+-------
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to
-deal in the Software without restriction, including without limitation the
-rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
-sell copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-IN THE SOFTWARE.
+[MIT License](LICENSE.txt)
