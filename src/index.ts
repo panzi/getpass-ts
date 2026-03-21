@@ -40,7 +40,7 @@ const CR        = 0x000D;
 const ESCAPE    = 0x001B;
 const BACKSPACE = 0x007F;
 
-export type Encoding = 'utf-8'|'latin1'|'ascii';
+export type Encoding = 'utf-8'|'latin1'|'ascii'|'binary';
 
 export interface GetPassOptions {
     /**
@@ -72,11 +72,16 @@ export interface GetPassOptions {
     echoRepeat?: [number, number];
 }
 
+export async function getPass(options: GetPassOptions & { encoding: 'utf-8'|'latin1'|'ascii' }): Promise<string|null>;
+export async function getPass(options: GetPassOptions & { encoding: 'binary' }): Promise<Buffer|null>;
+export async function getPass(options: GetPassOptions): Promise<string|Buffer|null>;
+export async function getPass(options?: string): Promise<string|null>;
+
 /**
  * Read a password from the terminal.
  * @returns The password or `null` if the user aborted.
  */
-export async function getPass(options?: GetPassOptions|string): Promise<string|null> {
+export async function getPass(options?: GetPassOptions|string): Promise<string|Buffer|null> {
     let prompt = 'Password: ';
     let encoding: Encoding = 'utf-8';
     let echoChar = '*';
@@ -125,6 +130,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
     }
 
     const utf8 = encoding === 'utf-8';
+    const ascii = encoding === 'ascii';
 
     const { rfd, wfd } = await openTTY();
     let rtty: tty.ReadStream|undefined;
@@ -232,66 +238,11 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
         }
 
         try {
-            const passwordBytes: number[] = [];
-            const widths: { bytes: number, width: number }[] = [];
+            const password: number[] = [];
+            const widths: number[] = [];
             let pasteNesting = 0;
 
-            async function appendByte(byte: number): Promise<void> {
-                passwordBytes.push(byte);
-
-                let byteCount = 1;
-                if (utf8) {
-                    if (byte >= 0xC0) {
-                        // UTF-8 multi-byte sequence
-                        if (byte >= 0xF0) {
-                            // 4 bytes
-                            byte = await peekByte();
-                            if (isCont(byte)) {
-                                ++ offset;
-                                ++ byteCount;
-                                passwordBytes.push(byte);
-
-                                byte = await peekByte();
-                                if (isCont(byte)) {
-                                    ++ offset;
-                                    ++ byteCount;
-                                    passwordBytes.push(byte);
-
-                                    byte = await peekByte();
-                                    if (isCont(byte)) {
-                                        ++ offset;
-                                        ++ byteCount;
-                                        passwordBytes.push(byte);
-                                    }
-                                }
-                            }
-                        } else if (byte >= 0xE0) {
-                            // 3 bytes
-                            byte = await peekByte();
-                            if (isCont(byte)) {
-                                ++ offset;
-                                ++ byteCount;
-                                passwordBytes.push(byte);
-
-                                byte = await peekByte();
-                                if (isCont(byte)) {
-                                    ++ offset;
-                                    ++ byteCount;
-                                    passwordBytes.push(byte);
-                                }
-                            }
-                        } else {
-                            // 2 bytes
-                            byte = await peekByte();
-                            if (isCont(byte)) {
-                                ++ offset;
-                                ++ byteCount;
-                                passwordBytes.push(byte);
-                            }
-                        }
-                    }
-                }
-
+            function writeEcho(): void {
                 let width = 0;
                 if (echoRepeatMax) {
                     const echo =
@@ -300,7 +251,110 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
                     wtty?.write(echo);
                     width = echo.length;
                 }
-                widths.push({ bytes: byteCount, width });
+                widths.push(width);
+            }
+
+            async function appendByte(byte: number): Promise<void> {
+                if (utf8 && byte >= 0xC0) {
+                    let codepoint = byte;
+                    // UTF-8 multi-byte sequence
+                    if (byte >= 0xF0) {
+                        // 4 bytes
+                        codepoint &= 0x07;
+
+                        const b2 = await peekByte();
+                        if (isCont(b2)) {
+                            ++ offset;
+                            codepoint <<= 6;
+                            codepoint |= b2 & 0x3F;
+
+                            const b3 = await peekByte();
+                            if (isCont(b3)) {
+                                ++ offset;
+                                codepoint <<= 6;
+                                codepoint |= b3 & 0x3F;
+
+                                const b4 = await peekByte();
+                                if (isCont(b4)) {
+                                    ++ offset;
+                                    codepoint <<= 6;
+                                    codepoint |= b4 & 0x3F;
+
+                                    password.push(codepoint);
+                                    writeEcho();
+                                } else {
+                                    // surrogate escape broken sequence
+                                    password.push(0xDC00 + byte);
+                                    password.push(0xDC00 + b2);
+                                    password.push(0xDC00 + b3);
+                                    writeEcho();
+                                    writeEcho();
+                                    writeEcho();
+                                }
+                            } else {
+                                // surrogate escape broken sequence
+                                password.push(0xDC00 + byte);
+                                password.push(0xDC00 + b2);
+                                writeEcho();
+                                writeEcho();
+                            }
+                        } else {
+                            // surrogate escape broken sequence
+                            password.push(0xDC00 + byte);
+                            writeEcho();
+                        }
+                    } else if (byte >= 0xE0) {
+                        // 3 bytes
+                        codepoint &= 0x0F;
+
+                        const b2 = await peekByte();
+                        if (isCont(b2)) {
+                            ++ offset;
+                            codepoint <<= 6;
+                            codepoint |= b2 & 0x3F;
+
+                            const b3 = await peekByte();
+                            if (isCont(b3)) {
+                                ++ offset;
+                                codepoint <<= 6;
+                                codepoint |= b3 & 0x3F;
+
+                                password.push(codepoint);
+                                writeEcho();
+                            } else {
+                                // surrogate escape broken sequence
+                                password.push(0xDC00 + byte);
+                                password.push(0xDC00 + b2);
+                                writeEcho();
+                                writeEcho();
+                            }
+                        } else {
+                            // surrogate escape broken sequence
+                            password.push(0xDC00 + byte);
+                            writeEcho();
+                        }
+                    } else {
+                        // 2 bytes
+                        codepoint &= 0x1F;
+
+                        const b2 = await peekByte();
+                        if (isCont(b2)) {
+                            ++ offset;
+                            codepoint <<= 6;
+                            codepoint |= b2 & 0x3F;
+
+                            password.push(codepoint);
+                            writeEcho();
+                        } else {
+                            // surrogate escape broken sequence
+                            password.push(0xDC00 + byte);
+                            writeEcho();
+                        }
+                    }
+                } else {
+                    password.push(ascii && byte > 0x7F ? 0xDC00 + byte : byte);
+                    writeEcho();
+                }
             }
 
             for (;;) {
@@ -435,16 +489,10 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
                             return null;
 
                         case BACKSPACE:
-                            passwordBytes.pop();
+                            password.pop();
                             const width = widths.pop();
                             if (width) {
-                                if (width.width) {
-                                    wtty.write(`\x1B[${width.width}D\x1B[K`)
-                                }
-                                let bytes = width.bytes - 1;
-                                while (bytes --) {
-                                    passwordBytes.pop();
-                                }
+                                wtty.write(`\x1B[${width}D\x1B[K`)
                             }
                             break;
 
@@ -455,7 +503,9 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
                 }
             }
 
-            return Buffer.from(passwordBytes).toString(encoding);
+            return encoding === 'binary' ?
+                Buffer.from(password) :
+                String.fromCodePoint(...password);
         } finally {
             rtty.off('data', onData);
             rtty.off('error', onError);
