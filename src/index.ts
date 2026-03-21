@@ -32,6 +32,14 @@ function isNodeError<T extends ErrorConstructor>(error: unknown, errorType: T): 
     return error instanceof errorType;
 }
 
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isCont(byte: number): boolean {
+    return byte >= 0x80 && byte < 0xC0;
+}
+
 const CTRLC     = 0x0003;
 const CTRLD     = 0x0004;
 const LF        = 0x000A;
@@ -68,20 +76,35 @@ export interface GetPassOptions {
 
     /**
      * A [min, max] tuple of integers.
+     * 
      * The `echoChar` is randomly repeated `n` times where `min` <= `n` and `n` <= `max`.
      * If `echoChar` is passed but `echoRepeat` isn't, then the `echoChar` is written
-     * exactly once by input byte.
+     * exactly once by input byte. This is to obfuscate the password length for anyone
+     * snooping.
      * 
      * @default undefined
      */
     echoRepeat?: [number, number];
+
+    /**
+     * A [min, max] tuple of integers.
+     * 
+     * This is a range for a random delay in milliseconds between the repeated
+     * `echoChar` prints or deletions on backspace. This is to make the repeated
+     * `echoChar`s look more realistic.
+     * 
+     * @default [0,80]
+     */
+    repeatDelay?: [number, number];
 }
 
 /**
  * Read a password from the terminal, decoded as a string from UTF-8.
  * 
  * The user can delete the entered password via backspace, but no other editing
- * features are supported at the moment.
+ * features are supported at the moment. A password can contain a new line
+ * character by pressing Shift+Enter. Pasting is also supported, though escape
+ * sequences are also stripped from pasted text.
  * 
  * The input is accepted when the user hits Ctrl+D, or when a new line, carriage
  * return, or null byte is read.
@@ -97,7 +120,9 @@ export async function getPass(prompt?: string): Promise<string|null>;
  * Read a password from the terminal, decoded as a string from the given encoding.
  * 
  * The user can delete the entered password via backspace, but no other editing
- * features are supported at the moment.
+ * features are supported at the moment. A password can contain a new line
+ * character by pressing Shift+Enter. Pasting is also supported, though escape
+ * sequences are also stripped from pasted text.
  * 
  * The input is accepted when the user hits Ctrl+D, or when a new line, carriage
  * return, or null byte is read.
@@ -113,7 +138,9 @@ export async function getPass(options: GetPassOptions & { encoding: 'utf-8'|'lat
  * Read a password from the terminal as a `Buffer`.
  * 
  * The user can delete the entered password via backspace, but no other editing
- * features are supported at the moment.
+ * features are supported at the moment. A password can contain a new line
+ * character by pressing Shift+Enter. Pasting is also supported, though escape
+ * sequences are also stripped from pasted text.
  * 
  * The input is accepted when the user hits Ctrl+D, or when a new line, carriage
  * return, or null byte is read.
@@ -129,7 +156,9 @@ export async function getPass(options: GetPassOptions & { encoding: 'binary' }):
  * Read a password from the terminal.
  * 
  * The user can delete the entered password via backspace, but no other editing
- * features are supported at the moment.
+ * features are supported at the moment. A password can contain a new line
+ * character by pressing Shift+Enter. Pasting is also supported, though escape
+ * sequences are also stripped from pasted text.
  * 
  * The input is accepted when the user hits Ctrl+D, or when a new line, carriage
  * return, or null byte is read.
@@ -145,7 +174,9 @@ export async function getPass(options: GetPassOptions): Promise<string|Buffer|nu
  * Read a password from the terminal.
  * 
  * The user can delete the entered password via backspace, but no other editing
- * features are supported at the moment.
+ * features are supported at the moment. A password can contain a new line
+ * character by pressing Shift+Enter. Pasting is also supported, though escape
+ * sequences are also stripped from pasted text.
  * 
  * The input is accepted when the user hits Ctrl+D, or when a new line, carriage
  * return, or null byte is read.
@@ -161,6 +192,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
     let echoChar = '*';
     let echoRepeatMin = 0;
     let echoRepeatMax = 0;
+    let repeatDelayMin = 0;
+    let repeatDelayMax = 80;
 
     if (typeof options === 'string') {
         prompt = options;
@@ -170,16 +203,17 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             encoding: oEncoding,
             echoChar: oEchoChar,
             echoRepeat: oEchoRepeat,
+            repeatDelay: oRepeatDelay,
         } = options;
         if (oPrompt !== undefined) {
             prompt = oPrompt;
         }
 
-        if (oEncoding !== undefined) {
+        if (oEncoding) {
             encoding = oEncoding;
         }
 
-        if (oEchoRepeat !== undefined) {
+        if (oEchoRepeat) {
             echoRepeatMin = oEchoRepeat[0];
             echoRepeatMax = oEchoRepeat[1];
             if (
@@ -201,9 +235,24 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                 echoRepeatMax = 1;
             }
         }
+
+        if (oRepeatDelay) {
+            repeatDelayMin = oRepeatDelay[0];
+            repeatDelayMax = oRepeatDelay[1];
+            if (
+                !isFinite(repeatDelayMin) ||
+                !isFinite(repeatDelayMax) ||
+                (repeatDelayMin|0) !== repeatDelayMin ||
+                (repeatDelayMax|0) !== repeatDelayMax ||
+                repeatDelayMin < 0 ||
+                repeatDelayMax < repeatDelayMin
+            ) {
+                throw new RangeError(`repeatDelay needs to be a [min, max] tuple of integers where min >= 0 and min <= max: [${oRepeatDelay}]`);
+            }
+        }
     }
 
-    const utf8 = encoding === 'utf-8';
+    const utf8  = encoding === 'utf-8';
     const ascii = encoding === 'ascii';
 
     const { rfd, wfd } = await openTTY();
@@ -316,14 +365,22 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             const widths: number[] = [];
             let pasteNesting = 0;
 
-            function writeEcho(): void {
+            async function writeEcho(): Promise<void> {
                 let width = 0;
                 if (echoRepeatMax) {
-                    const echo =
-                        echoRepeatMin === echoRepeatMax ? echoChar :
-                        echoChar.repeat(randomInt(echoRepeatMin, echoRepeatMax + 1));
-                    wtty?.write(echo);
-                    width = echo.length;
+                    const count = echoRepeatMin === echoRepeatMax ?
+                        echoRepeatMin :
+                        randomInt(echoRepeatMin, echoRepeatMax + 1);
+
+                    if (wtty) {
+                        for (let index = 0; index < count; ++ index) {
+                            if (index > 0) {
+                                await sleep(randomInt(repeatDelayMin, repeatDelayMax));
+                            }
+                            wtty.write(echoChar);
+                        }
+                    }
+                    width = echoChar.length * count;
                 }
                 widths.push(width);
             }
@@ -355,27 +412,27 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                                     codepoint |= b4 & 0x3F;
 
                                     password.push(codepoint);
-                                    writeEcho();
+                                    await writeEcho();
                                 } else {
                                     // surrogate escape broken sequence
                                     password.push(0xDC00 + byte);
                                     password.push(0xDC00 + b2);
                                     password.push(0xDC00 + b3);
-                                    writeEcho();
-                                    writeEcho();
-                                    writeEcho();
+                                    await writeEcho();
+                                    await writeEcho();
+                                    await writeEcho();
                                 }
                             } else {
                                 // surrogate escape broken sequence
                                 password.push(0xDC00 + byte);
                                 password.push(0xDC00 + b2);
-                                writeEcho();
-                                writeEcho();
+                                await writeEcho();
+                                await writeEcho();
                             }
                         } else {
                             // surrogate escape broken sequence
                             password.push(0xDC00 + byte);
-                            writeEcho();
+                            await writeEcho();
                         }
                     } else if (byte >= 0xE0) {
                         // 3 bytes
@@ -394,18 +451,18 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                                 codepoint |= b3 & 0x3F;
 
                                 password.push(codepoint);
-                                writeEcho();
+                                await writeEcho();
                             } else {
                                 // surrogate escape broken sequence
                                 password.push(0xDC00 + byte);
                                 password.push(0xDC00 + b2);
-                                writeEcho();
-                                writeEcho();
+                                await writeEcho();
+                                await writeEcho();
                             }
                         } else {
                             // surrogate escape broken sequence
                             password.push(0xDC00 + byte);
-                            writeEcho();
+                            await writeEcho();
                         }
                     } else {
                         // 2 bytes
@@ -418,16 +475,16 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                             codepoint |= b2 & 0x3F;
 
                             password.push(codepoint);
-                            writeEcho();
+                            await writeEcho();
                         } else {
                             // surrogate escape broken sequence
                             password.push(0xDC00 + byte);
-                            writeEcho();
+                            await writeEcho();
                         }
                     }
                 } else {
                     password.push(ascii && byte > 0x7F ? 0xDC00 + byte : byte);
-                    writeEcho();
+                    await writeEcho();
                 }
             }
 
@@ -562,7 +619,12 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                             password.pop();
                             const width = widths.pop();
                             if (width) {
-                                wtty.write(`\x1B[${width}D\x1B[K`)
+                                for (let index = 0; index < width; ++ index) {
+                                    if (index > 0) {
+                                        await sleep(randomInt(repeatDelayMin, repeatDelayMax));
+                                    }
+                                    wtty.write(`\x1B[1D\x1B[K`);
+                                }
                             }
                             break;
 
@@ -607,6 +669,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
     }
 }
 
+export default getPass;
+
 interface TTY {
     rfd: fs.FileHandle;
     wfd: fs.FileHandle;
@@ -642,8 +706,4 @@ async function openTTY(): Promise<TTY> {
 
         throw error;
     }
-}
-
-function isCont(byte: number): boolean {
-    return byte >= 0x80 && byte < 0xC0;
 }

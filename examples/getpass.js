@@ -16,6 +16,8 @@ function help() {
                                     times on every keypress, or a random number
                                     of times between MIN and MAX (inclusve).
                                     [default: 0]
+    --repeat-delay=TIME|MIN..MAX    Range of a random delay between repeated
+                                    CHAR prints and deletions. [default: [0,80]]
     --encoding=ENCODING
 
         Parse password using ENCODING. Encoding errors are handled like Python's
@@ -44,6 +46,12 @@ async function main() {
 
     /** @type {number=} */
     let echoRepeatMax;
+
+    /** @type {number=} */
+    let repeatDelayMin;
+
+    /** @type {number=} */
+    let repeatDelayMax;
 
     /** @type {Encoding=} */
     let encoding;
@@ -84,6 +92,7 @@ async function main() {
                     break;
 
                 case 'echo-repeat':
+                {
                     if (!optarg) {
                         console.error(`illegal argument to --${opt}=${optarg}`);
                         usage();
@@ -100,7 +109,26 @@ async function main() {
                     echoRepeatMin = +parts[0];
                     echoRepeatMax = parts.length > 1 ? +parts[1] : echoRepeatMin;
                     break;
+                }
+                case 'repeat-delay':
+                {
+                    if (!optarg) {
+                        console.error(`illegal argument to --${opt}=${optarg}`);
+                        usage();
+                        process.exit(1);
+                    }
 
+                    const parts = optarg.split('..');
+                    if (parts.length > 2 || parts.length < 1) {
+                        console.error(`illegal argument to --${opt}=${optarg}`);
+                        usage();
+                        process.exit(1);
+                    }
+
+                    repeatDelayMin = +parts[0];
+                    repeatDelayMax = parts.length > 1 ? +parts[1] : repeatDelayMin;
+                    break;
+                }
                 case 'encoding':
                     optarg = optarg?.toLowerCase();
                     if (optarg !== 'utf-8' && optarg !== 'latin1' && optarg !== 'ascii' && optarg !== 'binary') {
@@ -139,6 +167,10 @@ async function main() {
                     echoRepeatMin !== undefined ? [echoRepeatMin, echoRepeatMin] :
                     echoRepeatMax !== undefined ? [1, echoRepeatMax] :
                     undefined,
+        repeatDelay: repeatDelayMin !== undefined && repeatDelayMax !== undefined ? [repeatDelayMin, repeatDelayMax] :
+                     repeatDelayMin !== undefined ? [repeatDelayMin, repeatDelayMin] :
+                     repeatDelayMax !== undefined ? [1, repeatDelayMax] :
+                     undefined,
         encoding,
     });
     console.log(JSON.stringify({ password }));
