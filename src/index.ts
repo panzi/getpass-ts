@@ -80,6 +80,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
     let echoChar = '*';
     let echoRepeatMin = 0;
     let echoRepeatMax = 0;
+    // TODO: handle utf8 and don't backspace through half a codepoint
+    //const utf8 = encoding === 'utf-8';
 
     if (typeof options === 'string') {
         prompt = options;
@@ -130,7 +132,10 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
         rtty = new tty.ReadStream(rfd.fd);
         wtty = new tty.WriteStream(wfd.fd);
 
+        // turn on bracketed paste mode
+        wtty.write('\x1B[?2004h');
         wtty.write(prompt);
+
         rtty.resume();
         rtty.setRawMode(true);
         rtty.resume();
@@ -200,6 +205,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
         try {
             const passwordBytes: number[] = [];
             const widths: number[] = [];
+            let pasteNesting = 0;
 
             function appendByte(byte: number): void {
                 passwordBytes.push(byte);
@@ -213,7 +219,6 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
                 }
             }
 
-            // TODO: turn on paste mode? CSI ? 2004 h
             for (;;) {
                 let byte = await readByte();
                 if (byte < 0) return null;
@@ -252,13 +257,16 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
                         ) {
                             // ignore Alt-keypress or keycode sequence
                         } else if (byte >= 0x30 && byte <= 0x39) { // '0' ... '9'
-                            // TODO: do something with this
-                            while (byte >= 0x30 && byte <= 0x39) { // '0' ... '9'
+                            let param1 = 0;
+                            do {
+                                param1 *= 10;
+                                param1 += byte - 0x30;
+
                                 byte = await readByte();
                                 if (byte < 0) {
                                     return null;
                                 }
-                            }
+                            } while (byte >= 0x30 && byte <= 0x39); // '0' ... '9'
 
                             if (
                                 (byte >= 0x41 && byte <= 0x5A) || // 'A' ... 'Z'
@@ -267,26 +275,48 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
                                 // keycode sequence, <modifier> is a decimal
                                 // number and defaults to 1 (xterm)
                             } else {
+                                let param2 = -1;
                                 if (byte === 0x3b) { // ';'
+                                    param2 = 0;
                                     for (;;) {
                                         byte = await readByte();
+
                                         if (byte < 0) {
                                             return null;
                                         }
+
                                         if (!(byte >= 0x30 && byte <= 0x39)) { // '0' ... '9'
                                             break;
                                         }
+
+                                        param2 *= 10;
+                                        param2 += byte - 0x30;
                                     }
                                 }
 
                                 if (byte === 0x7E) { // '~'
                                     // keycode sequence, <keycode> and <modifier>
                                     // are decimal numbers and default to 1 (vt)
+                                    if (param2 === -1) {
+                                        switch (param1) {
+                                            case 200: // bracketed paste start
+                                                ++ pasteNesting;
+                                                break;
+
+                                            case 201: // bracketed paste end
+                                                if (pasteNesting > 0) {
+                                                    -- pasteNesting;
+                                                }
+                                                break;
+                                        }
+                                    }
                                 } else {
+                                    // XXX: unknown/broken escape sequence
                                     return null;
                                 }
                             }
                         } else {
+                            // XXX: unknown/broken escape sequence
                             return null;
                         }
                     } else if (byte === 0x4F) { // 'O'
@@ -304,12 +334,16 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
                         ) {
                             // function keys and such
                         } else {
+                            // XXX: unknown/broken escape sequence
                             return null;
                         }
                     } else {
+                        // XXX: unknown/broken escape sequence
                         return null;
                     }
-                } else if (byte === CTRLD || byte === LF || byte == CR || byte === 0) {
+                } else if (pasteNesting) {
+                    appendByte(byte === CR ? LF : byte);
+                } else if (byte === CTRLD || byte === LF || byte === CR || byte === 0) {
                     break;
                 } else {
                     switch (byte) {
@@ -348,6 +382,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|n
                 }
             } finally {
                 try {
+                    // turn off bracketed paste mode
+                    wtty?.write('\x1B[?2004l');
                     wtty?.end();
                     await wfd.close();
                     wtty?.destroy();
