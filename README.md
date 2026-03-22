@@ -5,7 +5,7 @@ getpass
 [![MIT License](https://img.shields.io/github/license/panzi/getpass-ts)](https://github.com/panzi/getpass-ts/blob/main/LICENSE.txt)
 
 Simple CLI password prompt for NodeJS for Unix(-like) operating systems. This
-is inspired by [arekinath/node-getpas](https://github.com/arekinath/node-getpass),
+is inspired by [arekinath/node-getpass](https://github.com/arekinath/node-getpass),
 but uses TypeScript and promises instead of callbacks.
 
 Reference
