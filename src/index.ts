@@ -133,7 +133,7 @@ export interface GetPassOptions {
      * `echoChar` prints or deletions on backspace. This is to make the repeated
      * `echoChar`s look more realistic.
      * 
-     * @default [0,80]
+     * @default [10,100]
      */
     repeatDelay?: [number, number];
 }
@@ -232,8 +232,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
     let echoChar = '*';
     let echoRepeatMin = 0;
     let echoRepeatMax = 0;
-    let repeatDelayMin = 0;
-    let repeatDelayMax = 80;
+    let repeatDelayMin = 10;
+    let repeatDelayMax = 100;
     let errors: EncodingErrors = 'surrogateescape';
 
     if (typeof options === 'string') {
@@ -447,7 +447,10 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                     if (wtty) {
                         for (let index = 0; index < count; ++ index) {
                             if (index > 0) {
-                                await sleep(randomInt(repeatDelayMin, repeatDelayMax));
+                                await sleep(
+                                    repeatDelayMin === repeatDelayMax ? repeatDelayMin :
+                                    randomInt(repeatDelayMin, repeatDelayMax + 1)
+                                );
                             }
                             wtty.write(echoChar);
                         }
@@ -732,7 +735,10 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                             if (width) {
                                 for (let index = 0; index < width; ++ index) {
                                     if (index > 0) {
-                                        await sleep(randomInt(repeatDelayMin, repeatDelayMax + 1));
+                                        await sleep(
+                                            repeatDelayMin === repeatDelayMax ? repeatDelayMin :
+                                            randomInt(repeatDelayMin, repeatDelayMax + 1)
+                                        );
                                     }
 
                                     if (column - echoWidth <= promptEnd) {
