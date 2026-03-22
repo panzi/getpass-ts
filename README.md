@@ -8,13 +8,46 @@ Simple CLI password prompt for NodeJS for Unix(-like) operating systems. This
 is inspired by [arekinath/node-getpass](https://github.com/arekinath/node-getpass),
 but uses TypeScript and promises instead of callbacks.
 
+Example
+-------
+
+```TypeScript
+import getPass from '@panzi/getpass';
+
+const password = await getPass();
+
+if (password === null) {
+    console.log('Aborted by user!');
+    process.exit();
+}
+```
+
+Dependencies
+------------
+
+This library has no hard dependencies, but for the width calculation on the
+`echoChar` various `wcswidth()` libraries are tried to be used and if none are
+available a simple fallback is used. The library fallback order is:
+
+* [wcwidth-o1](https://www.npmjs.com/package/wcwidth-o1)
+* [wcswidth](https://www.npmjs.com/package/wcwidth)
+* [simple-wcswidth](https://www.npmjs.com/package/simple-wcswidth)
+
+The simple built-in fallback is:
+
+```TypeScript
+function wcswidth(text: string): number {
+    return text.replace(/([^\n])\p{Mn}+/gu, '$1').replace(/\p{Emoji_Presentation}/gu, 'xx').length;
+}
+```
+
 Reference
 ---------
 
 ```TypeScript
-type Encoding = 'utf-8'|'latin1'|'ascii'|'binary';
+export type Encoding = 'utf-8'|'latin1'|'ascii'|'binary';
 
-interface GetPassOptions {
+export interface GetPassOptions {
     /**
      * Prompt to display.
      * @default 'Password: '
@@ -29,6 +62,10 @@ interface GetPassOptions {
 
     /**
      * Print this character when the user types.
+     * 
+     * May not include codepoints in the range of `U+0000` to `U+001F` (inclusive).
+     * These are things like `\t`, `\n`, Escape etc.
+     * 
      * @default '*'
      */
     echoChar?: string;
@@ -57,10 +94,12 @@ interface GetPassOptions {
     repeatDelay?: [number, number];
 }
 
-async function getPass(prompt?: string): Promise<string|null>;
-async function getPass(options: GetPassOptions & { encoding: 'utf-8'|'latin1'|'ascii' }): Promise<string|null>;
-async function getPass(options: GetPassOptions & { encoding: 'binary' }): Promise<Buffer|null>;
-async function getPass(options: GetPassOptions): Promise<string|Buffer|null>;
+export async function getPass(prompt?: string): Promise<string|null>;
+export async function getPass(options: GetPassOptions & { encoding: 'utf-8'|'latin1'|'ascii' }): Promise<string|null>;
+export async function getPass(options: GetPassOptions & { encoding: 'binary' }): Promise<Buffer|null>;
+export async function getPass(options: GetPassOptions): Promise<string|Buffer|null>;
+
+export default getPass;
 ```
 
 The user can delete the entered password via backspace, but no other editing
@@ -73,17 +112,6 @@ return, or null byte is read.
 
 The user can abort by pressing Escape, Ctrl+C, or by a premature end of the
 input stream.
-
-```TypeScript
-import getPass from '@panzi/getpass';
-
-const password = await getPass();
-
-if (password === null) {
-    console.log('Aborted by user!');
-    process.exit();
-}
-```
 
 License
 -------

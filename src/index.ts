@@ -28,6 +28,22 @@ import tty from 'tty';
 import fs from 'fs/promises';
 import { randomInt } from 'crypto';
 
+let wcswidth: (text: string) => number;
+
+try {
+    wcswidth = require('wcwidth-o1').wcswidth;
+} catch (error) {
+    try {
+        wcswidth = require('wcswidth');
+    } catch (error) {
+        try {
+            wcswidth = require('simple-wcswidth').wcswidth;
+        } catch (error) {
+            wcswidth = (text: string) => text.replace(/([^\n])\p{Mn}+/gu, '$1').replace(/\p{Emoji_Presentation}/gu, 'xx').length;
+        }
+    }
+}
+
 function isNodeError<T extends ErrorConstructor>(error: unknown, errorType: T): error is InstanceType<T> & NodeJS.ErrnoException {
     return error instanceof errorType;
 }
@@ -70,6 +86,10 @@ export interface GetPassOptions {
 
     /**
      * Print this character when the user types.
+     * 
+     * May not include codepoints in the range of `U+0000` to `U+001F` (inclusive).
+     * These are things like `\t`, `\n`, Escape etc.
+     * 
      * @default '*'
      */
     echoChar?: string;
@@ -230,6 +250,9 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
 
         if (oEchoChar !== undefined) {
             echoChar = oEchoChar;
+            if (/[\x00-\x1F]/.test(echoChar)) {
+                throw new Error(`illegal characters in echoChar: ${JSON.stringify(echoChar)}`);
+            }
             if (oEchoRepeat === undefined) {
                 echoRepeatMin = 1;
                 echoRepeatMax = 1;
@@ -254,6 +277,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
 
     const utf8  = encoding === 'utf-8';
     const ascii = encoding === 'ascii';
+    const echoWidth = wcswidth(echoChar);
 
     const { rfd, wfd } = await openTTY();
     let rtty: tty.ReadStream|undefined;
@@ -263,13 +287,19 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         rtty = new tty.ReadStream(rfd.fd);
         wtty = new tty.WriteStream(wfd.fd);
 
-        // turn on bracketed paste mode
-        wtty.write('\x1B[?2004h');
+        // turn on bracketed paste mode and disable line wrapping
+        wtty.write('\x1B[?2004h\x1b[?7l');
         wtty.write(prompt);
 
         rtty.resume();
         rtty.setRawMode(true);
         rtty.resume();
+
+        // approxmate initial cursor position:
+        let column = 1 + prompt.slice(prompt.indexOf('\n') + 1).length;
+        let row = 1;
+        let promptEndInit = false;
+        let promptEnd = column;
 
         let buffer: Buffer|null = null;
         let offset = 0;
@@ -302,9 +332,18 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             rtty?.off('end', onEnd);
         };
 
+        const onResize = () => {
+            // request actual cursor position
+            wtty?.write('\x1b[6n');
+        };
+
         rtty.on('data', onData);
         rtty.on('error', onError);
         rtty.on('end', onEnd);
+        wtty.on('resize', onResize);
+
+        // request actual cursor position
+        wtty.write('\x1b[6n');
 
         async function readByte(): Promise<number> {
             if (!buffer || offset >= buffer.byteLength) {
@@ -379,8 +418,10 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                             }
                             wtty.write(echoChar);
                         }
+                        // request actual cursor position
+                        wtty.write('\x1b[6n');
                     }
-                    width = echoChar.length * count;
+                    width = echoWidth * count;
                 }
                 widths.push(width);
             }
@@ -579,8 +620,42 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                                                 break;
                                         }
                                     }
+                                } else if (param2 != -1 && byte === 0x52) { // 'R'
+                                    // cursor position
+                                    column = param2;
+                                    row = param1;
+                                    if (!promptEndInit) {
+                                        promptEnd = column;
+                                        promptEndInit = true;
+                                    }
                                 } else {
                                     // XXX: unknown/broken escape sequence
+                                }
+                            }
+                        } else if (byte === 0x3F) { // '?'
+                            // private
+                            let param1 = 0;
+                            while ((byte = await readByte()) >= 0x30 && byte <= 0x39) { // '0' ... '9'
+                                param1 *= 10;
+                                param1 += byte - 0x30;
+                            }
+
+                            let param2 = -1;
+                            if (byte === 0x3b) { // ';'
+                                param2 = 0;
+                                while ((byte = await readByte()) >= 0x30 && byte <= 0x39) { // '0' ... '9'
+                                    param1 *= 10;
+                                    param1 += byte - 0x30;
+                                }
+                            }
+
+                            if (param2 != -1 && byte === 0x52) { // 'R'
+                                // cursor position
+                                column = param2;
+                                row = param1;
+                                if (!promptEndInit) {
+                                    promptEnd = column;
+                                    promptEndInit = true;
                                 }
                             }
                         } else {
@@ -621,10 +696,24 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                             if (width) {
                                 for (let index = 0; index < width; ++ index) {
                                     if (index > 0) {
-                                        await sleep(randomInt(repeatDelayMin, repeatDelayMax));
+                                        await sleep(randomInt(repeatDelayMin, repeatDelayMax + 1));
                                     }
-                                    wtty.write(`\x1B[1D\x1B[K`);
+
+                                    if (column - echoWidth <= promptEnd) {
+                                        let sumWidth = 0;
+                                        for (const width of widths) {
+                                            sumWidth += width;
+                                        }
+                                        wtty.write(`\x1B[${row};${promptEnd}H\x1B[K` + echoChar.repeat(sumWidth / echoWidth));
+                                        column = promptEnd;
+                                    } else {
+                                        wtty.write(`\x1B[1D\x1B[K`);
+                                        column -= echoWidth;
+                                    }
                                 }
+
+                                // request actual cursor position
+                                wtty.write('\x1b[6n');
                             }
                             break;
 
@@ -642,6 +731,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             rtty.off('data', onData);
             rtty.off('error', onError);
             rtty.off('end', onEnd);
+            wtty.off('resize', onResize);
         }
     } finally {
         try {
@@ -654,8 +744,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                 }
             } finally {
                 try {
-                    // turn off bracketed paste mode
-                    wtty?.write('\x1B[?2004l');
+                    // turn off bracketed paste mode and enable line wrapping
+                    wtty?.write('\x1B[?2004l\x1b[?7h');
                     wtty?.end();
                     await wfd.close();
                     wtty?.destroy();
