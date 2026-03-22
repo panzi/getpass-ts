@@ -47,6 +47,8 @@ Reference
 ```TypeScript
 export type Encoding = 'utf-8'|'latin1'|'ascii'|'binary';
 
+export type EncodingErrors = 'strict'|'ignore'|'replace'|'surrogateescape';
+
 export interface GetPassOptions {
     /**
      * Prompt to display.
@@ -59,6 +61,21 @@ export interface GetPassOptions {
      * @default 'utf-8'
      */
     encoding?: Encoding;
+
+    /**
+     * How do handle encoding errors.
+     * 
+     * * `'strict'` - Throw an `Error`.
+     * * `'ignore'` - Ignore the invalid bytes.
+     * * `'replace'` - Replace the invalid bytes with the unicode replacement
+     *   character � (`U+FFFD`).
+     * * `'surrogateescape'` - Encode invalid bytes as a surrogate code of
+     *   `U+DC00 + invalid_byte`. This is the same strategy Python uses for
+     *    interfacing with the operating system.
+     * 
+     * @default 'surrogateescape'
+     */
+    errors?: EncodingErrors;
 
     /**
      * Print this character when the user types.
@@ -112,6 +129,9 @@ return, or null byte is read.
 
 The user can abort by pressing Escape, Ctrl+C, or by a premature end of the
 input stream.
+
+When parsing invalid UTF-8 or ASCII the invalid bytes are handled the way
+Python does with it's "surrogate escape" method.
 
 License
 -------

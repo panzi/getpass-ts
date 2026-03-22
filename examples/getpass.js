@@ -1,6 +1,7 @@
 import { getPass } from '../build/index.js';
 
 /** @typedef {import('../src/index.js').Encoding} Encoding */
+/** @typedef {import('../src/index.js').EncodingErrors} EncodingErrors */
 
 function usage() {
     console.log(`Usage: ${process.argv[0]} ${process.argv[1]} [OPTIONS] [--help]`);
@@ -31,6 +32,23 @@ function help() {
             binary
 
         [default: utf-8]
+
+    --errors=STRATEGY
+
+        Use STRATEGY to handle encoding errors.
+
+        Supported strategies:
+
+            strict            Throw an Error.
+            ignore            Ignore the invalid bytes.
+            replace           Replace the invalid bytes with the unicode
+                              replacement character � (U+FFFD).
+            surrogateescape   Encode invalid bytes as a surrogate code of
+                              U+DC00 + invalid_byte. This is the same strategy
+                              Python uses for interfacing with the operating
+                              system.
+
+        [default: surrogateescape]
 `);
 }
 
@@ -55,6 +73,9 @@ async function main() {
 
     /** @type {Encoding=} */
     let encoding;
+
+    /** @type {EncodingErrors=} */
+    let errors;
 
     /** @type {string[]} */
     let nonopts = [];
@@ -131,12 +152,38 @@ async function main() {
                 }
                 case 'encoding':
                     optarg = optarg?.toLowerCase();
-                    if (optarg !== 'utf-8' && optarg !== 'latin1' && optarg !== 'ascii' && optarg !== 'binary') {
-                        console.error(`illegal argument to --${opt}=${optarg}`);
-                        usage();
-                        process.exit(1);
+                    switch (optarg) {
+                        case 'utf-8':
+                        case 'latin1':
+                        case 'ascii':
+                        case 'binary':
+                            encoding = optarg;
+                            break;
+
+                        default:
+                            console.error(`illegal argument to --${opt}=${optarg}`);
+                            usage();
+                            process.exit(1);
+                            break;
                     }
-                    encoding = optarg;
+                    break;
+
+                case 'errors':
+                    optarg = optarg?.toLowerCase();
+                    switch (optarg) {
+                        case 'strict':
+                        case 'ignore':
+                        case 'replace':
+                        case 'surrogateescape':
+                            errors = optarg;
+                            break;
+
+                        default:
+                            console.error(`illegal argument to --${opt}=${optarg}`);
+                            usage();
+                            process.exit(1);
+                            break;
+                    }
                     break;
 
                 case 'help':
@@ -172,6 +219,7 @@ async function main() {
                      repeatDelayMax !== undefined ? [1, repeatDelayMax] :
                      undefined,
         encoding,
+        errors,
     });
     console.log(JSON.stringify({ password }));
 }

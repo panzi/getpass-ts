@@ -69,6 +69,11 @@ const BACKSPACE = 0x007F;
 export type Encoding = 'utf-8'|'latin1'|'ascii'|'binary';
 
 /**
+ * Encoding error handling methods of `getPass()`.
+ */
+export type EncodingErrors = 'strict'|'ignore'|'replace'|'surrogateescape';
+
+/**
  * Options for `getPass()`.
  */
 export interface GetPassOptions {
@@ -83,6 +88,21 @@ export interface GetPassOptions {
      * @default 'utf-8'
      */
     encoding?: Encoding;
+
+    /**
+     * How do handle encoding errors.
+     * 
+     * * `'strict'` - Throw an `Error`.
+     * * `'ignore'` - Ignore the invalid bytes.
+     * * `'replace'` - Replace the invalid bytes with the unicode replacement
+     *   character � (`U+FFFD`).
+     * * `'surrogateescape'` - Encode invalid bytes as a surrogate code of
+     *   `U+DC00 + invalid_byte`. This is the same strategy Python uses for
+     *    interfacing with the operating system.
+     * 
+     * @default 'surrogateescape'
+     */
+    errors?: EncodingErrors;
 
     /**
      * Print this character when the user types.
@@ -214,6 +234,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
     let echoRepeatMax = 0;
     let repeatDelayMin = 0;
     let repeatDelayMax = 80;
+    let errors: EncodingErrors = 'surrogateescape';
 
     if (typeof options === 'string') {
         prompt = options;
@@ -221,6 +242,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         const {
             prompt: oPrompt,
             encoding: oEncoding,
+            errors: oErrors,
             echoChar: oEchoChar,
             echoRepeat: oEchoRepeat,
             repeatDelay: oRepeatDelay,
@@ -231,6 +253,10 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
 
         if (oEncoding) {
             encoding = oEncoding;
+        }
+
+        if (oErrors) {
+            errors = oErrors;
         }
 
         if (oEchoRepeat) {
@@ -275,8 +301,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         }
     }
 
-    const utf8  = encoding === 'utf-8';
-    const ascii = encoding === 'ascii';
+    const utf8 = encoding === 'utf-8';
+    const raw  = encoding === 'latin1' || encoding === 'binary';
     const echoWidth = wcswidth(echoChar);
 
     const { rfd, wfd } = await openTTY();
@@ -404,6 +430,13 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             const widths: number[] = [];
             let pasteNesting = 0;
 
+            const handleError: (bytes: number[]) => number[] = (
+                errors === 'strict'  ? encdingErrorsStrict :
+                errors === 'ignore'  ? encodingErrorsIgnore :
+                errors === 'replace' ? encodingErrorsReplace :
+                encodingErrorsSurrogateEscape
+            );
+
             async function writeEcho(): Promise<void> {
                 let width = 0;
                 if (echoRepeatMax) {
@@ -455,25 +488,22 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                                     password.push(codepoint);
                                     await writeEcho();
                                 } else {
-                                    // surrogate escape broken sequence
-                                    password.push(0xDC00 + byte);
-                                    password.push(0xDC00 + b2);
-                                    password.push(0xDC00 + b3);
-                                    await writeEcho();
-                                    await writeEcho();
-                                    await writeEcho();
+                                    for (const codepoint of handleError([byte, b2, b3])) {
+                                        password.push(codepoint);
+                                        await writeEcho();
+                                    }
                                 }
                             } else {
-                                // surrogate escape broken sequence
-                                password.push(0xDC00 + byte);
-                                password.push(0xDC00 + b2);
-                                await writeEcho();
-                                await writeEcho();
+                                for (const codepoint of handleError([byte, b2])) {
+                                    password.push(codepoint);
+                                    await writeEcho();
+                                }
                             }
                         } else {
-                            // surrogate escape broken sequence
-                            password.push(0xDC00 + byte);
-                            await writeEcho();
+                            for (const codepoint of handleError([byte])) {
+                                password.push(codepoint);
+                                await writeEcho();
+                            }
                         }
                     } else if (byte >= 0xE0) {
                         // 3 bytes
@@ -494,16 +524,16 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                                 password.push(codepoint);
                                 await writeEcho();
                             } else {
-                                // surrogate escape broken sequence
-                                password.push(0xDC00 + byte);
-                                password.push(0xDC00 + b2);
-                                await writeEcho();
-                                await writeEcho();
+                                for (const codepoint of handleError([byte, b2])) {
+                                    password.push(codepoint);
+                                    await writeEcho();
+                                }
                             }
                         } else {
-                            // surrogate escape broken sequence
-                            password.push(0xDC00 + byte);
-                            await writeEcho();
+                            for (const codepoint of handleError([byte])) {
+                                password.push(codepoint);
+                                await writeEcho();
+                            }
                         }
                     } else {
                         // 2 bytes
@@ -518,13 +548,19 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                             password.push(codepoint);
                             await writeEcho();
                         } else {
-                            // surrogate escape broken sequence
-                            password.push(0xDC00 + byte);
-                            await writeEcho();
+                            for (const codepoint of handleError([byte])) {
+                                password.push(codepoint);
+                                await writeEcho();
+                            }
                         }
                     }
+                } else if (!raw && byte > 0x7F) {
+                    for (const codepoint of handleError([byte])) {
+                        password.push(codepoint);
+                        await writeEcho();
+                    }
                 } else {
-                    password.push(ascii && byte > 0x7F ? 0xDC00 + byte : byte);
+                    password.push(byte);
                     await writeEcho();
                 }
             }
@@ -796,4 +832,20 @@ async function openTTY(): Promise<TTY> {
 
         throw error;
     }
+}
+
+function encdingErrorsStrict(bytes: number[]): number[] {
+    throw new Error(`invalid bytes: [${bytes.map(byte => '0x' + byte.toString(16).padStart(2, '0')).join(', ')}]`);
+}
+
+function encodingErrorsIgnore(bytes: number[]): number[] {
+    return [];
+}
+
+function encodingErrorsReplace(bytes: number[]): number[] {
+    return [0xFFFD];
+}
+
+function encodingErrorsSurrogateEscape(bytes: number[]): number[] {
+    return bytes.map(byte => 0xDC00 + byte);
 }
