@@ -10,6 +10,15 @@
   "author": "Mathias Panzenböck",
   "type": "module",
   "main": "./build/index.js",
+  "types": "./build/index.d.ts",
+  "homepage": "https://github.com/panzi/getpass-ts#readme",
+  "bugs": {
+    "url": "https://github.com/panzi/getpass-ts/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/panzi/getpass-ts.git"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
