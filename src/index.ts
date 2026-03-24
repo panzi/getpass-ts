@@ -276,7 +276,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
 
         if (oEchoChar !== undefined) {
             echoChar = oEchoChar;
-            if (/[\x00-\x1F]/.test(echoChar)) {
+            if (/[\x00-\x1F\x7F]/.test(echoChar)) {
                 throw new Error(`illegal characters in echoChar: ${JSON.stringify(echoChar)}`);
             }
             if (oEchoRepeat === undefined) {
@@ -344,18 +344,18 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             readReject(error);
             readPromise = null;
 
-            rtty?.off('data', onData);
+            rtty?.off('data',  onData);
             rtty?.off('error', onError);
-            rtty?.off('end', onEnd);
+            rtty?.off('end',   onEnd);
         };
 
         const onEnd = () => {
             readResolve(null);
             readPromise = null;
 
-            rtty?.off('data', onData);
+            rtty?.off('data',  onData);
             rtty?.off('error', onError);
-            rtty?.off('end', onEnd);
+            rtty?.off('end',   onEnd);
         };
 
         const onResize = () => {
@@ -368,9 +368,9 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             }
         };
 
-        rtty.on('data', onData);
-        rtty.on('error', onError);
-        rtty.on('end', onEnd);
+        rtty.on('data',   onData);
+        rtty.on('error',  onError);
+        rtty.on('end',    onEnd);
         wtty.on('resize', onResize);
 
         // request actual cursor position
@@ -779,9 +779,9 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                 Buffer.from(password) :
                 String.fromCodePoint(...password);
         } finally {
-            rtty.off('data', onData);
-            rtty.off('error', onError);
-            rtty.off('end', onEnd);
+            rtty.off('data',   onData);
+            rtty.off('error',  onError);
+            rtty.off('end',    onEnd);
             wtty.off('resize', onResize);
         }
     } finally {

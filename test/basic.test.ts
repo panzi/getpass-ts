@@ -12,8 +12,8 @@ function stripEscapeSequences(text: string): string {
 
 type GetPassOutput = {
     output: string|Buffer;
-    echo: string;
-    password: string|null|{type: "Buffer", data: number[]};
+    echo?: string;
+    password?: string|null|{type: "Buffer", data: number[]};
     signal?: number;
     exitCode: number;
 };
@@ -138,16 +138,28 @@ async function getpass({
                         return;
                     }
 
-                    const echo = text.slice(0, index);
-                    const data = JSON.parse(text.slice(index));
+                    try {
+                        const echo = text.slice(0, index);
+                        const { password } = JSON.parse(text.slice(index));
 
-                    resolve({
-                        output,
-                        echo,
-                        password: data.password,
-                        signal,
-                        exitCode,
-                    });
+                        resolve({
+                            output,
+                            echo,
+                            password,
+                            signal,
+                            exitCode,
+                        });
+                    } catch (error) {
+                        if (error instanceof SyntaxError) {
+                            resolve({
+                                output,
+                                signal,
+                                exitCode,
+                            });
+                        } else {
+                            throw error;
+                        }
+                    }
                 } catch (error) {
                     reject(error);
                 }
@@ -171,6 +183,7 @@ type TestCase = {
     signal?: number;
     exitCode?: number;
     output?: string|Buffer;
+    exception?: string;
 };
 
 const tests: TestCase[] = [
@@ -226,6 +239,14 @@ const tests: TestCase[] = [
         password: 'foo',
     },
     {
+        name: 'Echo Repeat 2',
+        input: 'foo\n',
+        echo: '******',
+        echoChar: '*',
+        echoRepeat: 2,
+        password: 'foo',
+    },
+    {
         name: 'Echo + Backspace',
         input: 'foo\x7Fx\n',
         echoChar: '*',
@@ -233,13 +254,83 @@ const tests: TestCase[] = [
         echo: '****',
         password: 'fox',
     },
+    {
+        name: 'Echo Repeat 2 + Backspace',
+        input: 'foo\x7Fx\x7F\x7F..\n',
+        echoChar: '*',
+        echoRepeat: 2,
+        echo: '************',
+        password: 'f..',
+    },
+    {
+        name: 'Custom Prompt',
+        prompt: 'PROMPT> ',
+        input: 'FOO\n',
+        password: 'FOO',
+    },
+    // {
+    //     name: 'Empty Prompt',
+    //     prompt: '',
+    //     input: 'FOO\n',
+    //     password: 'FOO',
+    // },
 
-    // TODO: all kinds of broken encoding and stuff
-    // TODO: echo
+    {
+        name: 'Broken ASCII (ignore)',
+        errors: 'ignore',
+        input: Buffer.from([0x66, 0xFE, 0x0A]),
+        password: 'f',
+    },
+    {
+        name: 'Broken ASCII (replace)',
+        errors: 'replace',
+        input: Buffer.from([0x66, 0xFE, 0x0A]),
+        password: 'f\uFFFD',
+    },
+    {
+        name: 'Broken ASCII (surrogateescape)',
+        errors: 'surrogateescape',
+        input: Buffer.from([0x66, 0xFE, 0x0A]),
+        password: 'f\uDCFE',
+    },
+    {
+        name: 'Broken ASCII (strict)',
+        errors: 'strict',
+        input: Buffer.from([0x66, 0xFE, 0x0A]),
+        exception: 'invalid bytes: [0xfe]'
+    },
+
+    {
+        name: 'Broken UTF-8 (ignore)',
+        errors: 'ignore',
+        input: Buffer.from([0x66, 0xDF, 0x6F, 0xF7, 0xBF, 0x0A]),
+        password: 'fo',
+    },
+    {
+        name: 'Broken UTF-8 (replace)',
+        errors: 'replace',
+        input: Buffer.from([0x66, 0xDF, 0x6F, 0xF7, 0xBF, 0x0A]),
+        password: 'f\uFFFDo\uFFFD',
+    },
+    {
+        name: 'Broken UTF-8 (surrogateescape)',
+        errors: 'surrogateescape',
+        input: Buffer.from([0x66, 0xDF, 0x6F, 0xF7, 0xBF, 0x0A]),
+        password: 'f\uDCDFo\uDCF7\uDCBF',
+    },
+    {
+        name: 'Broken UTF-8 (strict)',
+        errors: 'strict',
+        input: Buffer.from([0xF7, 0xBF, 0x0A]),
+        exception: 'invalid bytes: [0xf7, 0xbf]'
+    },
 ];
 
 describe('Basic Tests', () => {
-    for (const { name, prompt, encoding, errors, echoChar, echoRepeat, input, echo, password, signal, exitCode, output } of tests) {
+    for (const { name, prompt, encoding, errors, echoChar, echoRepeat,
+                 input, echo, password, signal, exitCode, output,
+                 exception
+               } of tests) {
         test(name, async () => {
             const res = await getpass({
                 prompt,
@@ -251,7 +342,7 @@ describe('Basic Tests', () => {
             });
 
             if (echo !== undefined) {
-                expect(stripEscapeSequences(res.echo).trimEnd()).toEqual(echo);
+                expect(res.echo && stripEscapeSequences(res.echo).trimEnd()).toEqual(echo);
             }
 
             if (password !== undefined) {
@@ -272,6 +363,11 @@ describe('Basic Tests', () => {
                 } else {
                     expect(res.output).toEqual(output);
                 }
+            }
+
+            if (exception !== undefined) {
+                expect(res.exitCode).not.toEqual(0);
+                expect(res.output.includes(exception)).toBeTruthy();
             }
         });
     }
