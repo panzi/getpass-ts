@@ -321,7 +321,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         rtty.setRawMode(true);
         rtty.resume();
 
-        // approxmate initial cursor position:
+        // approximate initial cursor position:
         let column = 1 + prompt.slice(prompt.indexOf('\n') + 1).length;
         let row = 1;
         let promptEndInit = false;
@@ -359,8 +359,13 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         };
 
         const onResize = () => {
-            // request actual cursor position
-            wtty?.write('\x1b[6n');
+            if (wtty) {
+                // request actual cursor position
+                wtty.write('\x1b[6n');
+                if (wtty.columns > column) {
+                    column = wtty.columns;
+                }
+            }
         };
 
         rtty.on('data', onData);
@@ -458,6 +463,10 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                         wtty.write('\x1b[6n');
                     }
                     width = echoWidth * count;
+                    column += width;
+                    if (wtty && column > wtty.columns) {
+                        column = wtty.columns;
+                    }
                 }
                 widths.push(width);
             }

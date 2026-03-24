@@ -225,14 +225,14 @@ const tests: TestCase[] = [
         echoRepeat: 1,
         password: 'foo',
     },
-    // {
-    //     name: 'Echo + Backspace',
-    //     input: 'foo\x7Fx\n',
-    //     echo: '****',
-    //     echoChar: '*',
-    //     echoRepeat: 1,
-    //     password: 'fox',
-    // },
+    {
+        name: 'Echo + Backspace',
+        input: 'foo\x7Fx\n',
+        echoChar: '*',
+        echoRepeat: 1,
+        echo: '****',
+        password: 'fox',
+    },
 
     // TODO: all kinds of broken encoding and stuff
     // TODO: echo
