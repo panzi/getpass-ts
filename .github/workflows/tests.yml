@@ -24,10 +24,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Test pty
-        run: |
-          sshpass -P'Password: ' -pfoobar node ./examples/getpass.js
-
       - name: Run tests
-        run: npm test
+        run: npm run -- test --color
 

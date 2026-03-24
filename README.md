@@ -1,6 +1,7 @@
 getpass
 =======
 
+[![Test Status](https://img.shields.io/github/actions/workflow/status/panzi/getpass-ts/tests.yml)](https://github.com/panzi/getpass-ts/actions/workflows/tests.yml)
 [![Release](https://img.shields.io/github/v/tag/panzi/getpass-ts)](https://github.com/panzi/getpass-ts/tags)
 [![MIT License](https://img.shields.io/github/license/panzi/getpass-ts)](https://github.com/panzi/getpass-ts/blob/main/LICENSE.txt)
 
