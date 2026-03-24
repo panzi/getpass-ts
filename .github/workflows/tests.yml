@@ -22,4 +22,13 @@ jobs:
         run: npm install --include=dev
 
       - name: Run tests
-        run: npm test
+        run: |
+          ls -lh /dev/tty
+          if [ -t 0 ]; then
+            echo "stdin is a terminal"
+          else
+            echo "stdin is NOT a terminal">&2
+          fi
+          export TERM=xterm-256color
+          npm test
+
