@@ -11,30 +11,66 @@ function stripEscapeSequences(text: string): string {
 }
 
 type GetPassOutput = {
+    output: string;
     echo: string;
     password: string|null|{type: "Buffer", data: number[]};
     signal?: number;
     exitCode: number;
 };
 
-async function getpass(args: string[], input: string|Buffer|((term: pty.IPty) => void)): Promise<GetPassOutput> {
+async function getpass({
+    prompt,
+    encoding,
+    errors,
+    echoChar,
+    echoRepeat,
+    input,
+}: {
+    prompt?: string;
+    encoding?: Encoding;
+    errors?: EncodingErrors;
+    echoChar?: string;
+    echoRepeat?: number;
+    input: string|Buffer|((term: pty.IPty) => void),
+}): Promise<GetPassOutput> {
     return new Promise((resolve, reject) => {
         try {
+            const args = [getpass_path];
 
-            const term = pty.spawn(process.argv0, args ? [getpass_path, ...args] : [getpass_path], {
+            if (prompt) {
+                args.push(`--prompt=${prompt}`);
+            }
+
+            if (encoding) {
+                args.push(`--encoding=${encoding}`);
+            }
+
+            if (errors) {
+                args.push(`--errors=${errors}`);
+            }
+
+            if (echoChar) {
+                args.push(`--echo-char=${echoChar}`);
+            }
+
+            if (echoRepeat !== undefined) {
+                args.push(`--echo-repeat=${echoRepeat}`);
+            }
+
+            const term = pty.spawn(process.argv0, args, {
                 name: 'xterm-color',
                 cwd: project_dir,
                 env: process.env,
             });
 
             let buf = '';
-            let sawPrompt = false;
+            let sawPrompt = prompt === '';
 
             term.onData(data => {
                 buf += data;
 
                 if (!sawPrompt) {
-                    const prompt = 'Password: ';
+                    prompt ??= 'Password: ';
                     const index = buf.indexOf(prompt);
                     if (index >= 0) {
                         sawPrompt = true;
@@ -50,11 +86,13 @@ async function getpass(args: string[], input: string|Buffer|((term: pty.IPty) =>
 
             term.onExit(({ exitCode, signal }) => {
                 try {
+                    const output = buf;
                     buf = stripEscapeSequences(buf).trim();
                     const items = buf.split(/(\r?\n)+/);
 
                     if (items.length <= 1) {
                         resolve({
+                            output,
                             echo: '',
                             password: JSON.parse(buf).password,
                             signal,
@@ -66,7 +104,13 @@ async function getpass(args: string[], input: string|Buffer|((term: pty.IPty) =>
                     const echo = items[0];
                     const data = JSON.parse(items.slice(1).join('\n'));
 
-                    resolve({ echo, password: data.password, signal, exitCode });
+                    resolve({
+                        output,
+                        echo,
+                        password: data.password,
+                        signal,
+                        exitCode,
+                    });
                 } catch (error) {
                     reject(error);
                 }
@@ -79,6 +123,7 @@ async function getpass(args: string[], input: string|Buffer|((term: pty.IPty) =>
 
 type TestCase = {
     name: string;
+    prompt?: string;
     encoding?: Encoding;
     errors?: EncodingErrors;
     echoChar?: string;
@@ -88,6 +133,7 @@ type TestCase = {
     password?: string|null|{type: "Buffer", data: number[]};
     signal?: number;
     exitCode?: number;
+    output?: string;
 };
 
 const tests: TestCase[] = [
@@ -129,33 +175,27 @@ const tests: TestCase[] = [
         input: 'foo\x04',
         password: 'foo',
     },
+    {
+        name: 'Backspace',
+        input: 'foo\x7Fx bar\x7F\x7F\x7F\x7F\n',
+        password: 'fox',
+    }
 
     // TODO: all kinds of broken encoding and stuff
     // TODO: echo, backspace
 ];
 
 describe('basic', () => {
-    for (const { name, encoding, errors, echoChar, echoRepeat, input, echo, password, signal, exitCode } of tests) {
+    for (const { name, prompt, encoding, errors, echoChar, echoRepeat, input, echo, password, signal, exitCode, output } of tests) {
         test(name, async () => {
-            const args: string[] = [];
-
-            if (encoding) {
-                args.push(`--encoding=${encoding}`);
-            }
-
-            if (errors) {
-                args.push(`--errors=${errors}`);
-            }
-
-            if (echoChar) {
-                args.push(`--echo-char=${echoChar}`);
-            }
-
-            if (echoRepeat !== undefined) {
-                args.push(`--echo-repeat=${echoRepeat}`);
-            }
-
-            const res = await getpass(args, input);
+            const res = await getpass({
+                prompt,
+                encoding,
+                errors,
+                echoChar,
+                echoRepeat,
+                input,
+            });
 
             if (echo !== undefined) {
                 expect(res.echo).toEqual(echo);
@@ -171,6 +211,10 @@ describe('basic', () => {
 
             if (exitCode !== undefined) {
                 expect(res.exitCode).toEqual(exitCode);
+            }
+
+            if (output !== undefined) {
+                expect(res.output).toEqual(output);
             }
         });
     }
