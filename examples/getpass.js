@@ -221,7 +221,12 @@ async function main() {
         encoding,
         errors,
     });
-    console.log(JSON.stringify({ password }));
+    const json = JSON.stringify({ password });
+    if (encoding && encoding !== 'binary') {
+        process.stdout.write(Buffer.from(json + '\n', encoding));
+    } else {
+        console.log(json);
+    }
 }
 
 main();
