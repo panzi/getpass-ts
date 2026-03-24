@@ -20,7 +20,8 @@
     "url": "git+https://github.com/panzi/getpass-ts.git"
   },
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "build": "tsc"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

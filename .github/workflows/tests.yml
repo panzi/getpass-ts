@@ -10,10 +10,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Test pty
-        run: |
-          sshpass -P'Password: ' -pfoobar node ./examples/getpass.js
-
       - name: Checkout repository
         uses: actions/checkout@v6
 
@@ -24,6 +20,13 @@ jobs:
 
       - name: Install dependencies
         run: npm install --include=dev
+
+      - name: Build
+        run: npm run build
+
+      - name: Test pty
+        run: |
+          sshpass -P'Password: ' -pfoobar node ./examples/getpass.js
 
       - name: Run tests
         run: npm test
