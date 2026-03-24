@@ -85,6 +85,9 @@ export interface GetPassOptions {
 
     /**
      * Parse input to string using this encoding.
+     * 
+     * If `'binary'` is passed `getPass()` will return a `Buffer` object.
+     * 
      * @default 'utf-8'
      */
     encoding?: Encoding;
