@@ -90,9 +90,6 @@ async function getpass({
                         sawPrompt = true;
                         buffer = buffer.subarray(index + bPrompt.length);
 
-                        // without this the tests sometimes fail:
-                        await new Promise(resolve => setTimeout(resolve, 10));
-
                         if (typeof input === 'function') {
                             input(term);
                         } else if (Buffer.isBuffer(input)) {

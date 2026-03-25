@@ -316,13 +316,13 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         rtty = new tty.ReadStream(rfd.fd);
         wtty = new tty.WriteStream(wfd.fd);
 
-        // turn on bracketed paste mode and disable line wrapping
-        wtty.write('\x1B[?2004h\x1b[?7l');
-        wtty.write(prompt);
-
         rtty.resume();
         rtty.setRawMode(true);
         rtty.resume();
+
+        // turn on bracketed paste mode and disable line wrapping
+        wtty.write('\x1B[?2004h\x1b[?7l');
+        wtty.write(prompt);
 
         // approximate initial cursor position:
         let column = 1 + prompt.slice(prompt.indexOf('\n') + 1).length;
