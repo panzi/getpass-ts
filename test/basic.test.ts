@@ -74,10 +74,10 @@ async function getpass({
             });
 
             let buf: Buffer[] = [];
-            let sawPrompt = prompt === '';
-            
+            let sawPrompt = false;
+
             const bEncoding = encoding === 'binary' ? 'ascii' : encoding ?? 'utf-8';
-            const bPrompt = Buffer.from(prompt ?? 'Password: ', bEncoding);
+            const bPrompt = Buffer.from(prompt === '' ? '\x1B[?2004h\x1b[?7l' : prompt ?? 'Password: ', bEncoding);
 
             term.onData((async (data: Buffer) => {
                 buf.push(data);
@@ -107,25 +107,6 @@ async function getpass({
                 try {
                     const output = Buffer.concat(buf);
                     let text = output.toString(encoding === 'binary' ? 'latin1' : encoding ?? 'utf-8');
-                    /*
-                    // Why does this *sometimes* not work?
-                    text = stripEscapeSequences(text).trim();
-                    const items = text.split(/(\r?\n|[\x03\x04\r])+/);
-
-                    if (items.length <= 1) {
-                        resolve({
-                            output,
-                            echo: '',
-                            password: JSON.parse(text).password,
-                            signal,
-                            exitCode,
-                        });
-                        return;
-                    }
-
-                    const echo = items[0];
-                    const data = JSON.parse(items.slice(1).join('\n'));
-                    */
 
                     const index = text.indexOf('{');
                     if (index < 0) {
@@ -275,12 +256,12 @@ const tests: TestCase[] = [
         input: 'FOO\n',
         password: 'FOO',
     },
-    // {
-    //     name: 'Empty Prompt',
-    //     prompt: '',
-    //     input: 'FOO\n',
-    //     password: 'FOO',
-    // },
+    {
+        name: 'Empty Prompt',
+        prompt: '',
+        input: 'FOO\n',
+        password: 'FOO',
+    },
 
     {
         name: 'Broken ASCII (ignore)',
