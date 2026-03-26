@@ -12,6 +12,7 @@ function stripEscapeSequences(text: string): string {
 
 type GetPassOutput = {
     output: string|Buffer;
+    kill?: string;
     echo?: string;
     password?: string|null|{type: "Buffer", data: number[]};
     signal?: number;
@@ -25,13 +26,15 @@ async function getpass({
     echoChar,
     echoRepeat,
     input,
+    kill,
 }: {
     prompt?: string;
     encoding?: Encoding;
     errors?: EncodingErrors;
     echoChar?: string;
     echoRepeat?: number;
-    input: string|Buffer|((term: pty.IPty) => void),
+    input: string|Buffer|((term: pty.IPty) => void);
+    kill?: string;
 }): Promise<GetPassOutput> {
     return new Promise((resolve, reject) => {
         try {
@@ -97,6 +100,10 @@ async function getpass({
                         } else {
                             term.write(Buffer.from(input, bEncoding));
                         }
+
+                        if (kill) {
+                            term.kill(kill);
+                        }
                     }
 
                     buf = [buffer];
@@ -160,6 +167,7 @@ type TestCase = {
     echoChar?: string;
     echoRepeat?: number;
     input: string|Buffer;
+    kill?: string;
     echo?: string;
     password?: string|null|{type: "Buffer", data: number[]};
     signal?: number;
@@ -212,6 +220,13 @@ const tests: TestCase[] = [
         name: 'Ctrl+D',
         input: 'foo\x04',
         password: 'foo',
+    },
+    {
+        name: 'SIGINT',
+        input: 'foo',
+        password: null,
+        kill: 'SIGINT',
+        signal: 2,
     },
     {
         name: 'Backspace',
@@ -317,11 +332,12 @@ const tests: TestCase[] = [
 describe('Basic Tests', () => {
     for (const { name, prompt, encoding, errors, echoChar, echoRepeat,
                  input, echo, password, signal, exitCode, output,
-                 exception
+                 exception, kill,
                } of tests) {
         test(name, async () => {
             const res = await getpass({
                 prompt,
+                kill,
                 encoding,
                 errors,
                 echoChar,
