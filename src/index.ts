@@ -758,8 +758,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                                         for (const width of widths) {
                                             sumWidth += width;
                                         }
-                                        wtty.write(`\x1B[${row};${promptEnd}H\x1B[K` + echoChar.repeat(sumWidth / echoWidth));
-                                        column = promptEnd;
+                                        wtty.write(`\x1B[${row};${promptEnd}H\x1B[K${echoChar.repeat(sumWidth / echoWidth)}`);
+                                        column = promptEnd + sumWidth;
                                     } else {
                                         wtty.write(`\x1B[1D\x1B[K`);
                                         column -= echoWidth;
