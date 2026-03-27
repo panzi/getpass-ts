@@ -136,7 +136,7 @@ export interface GetPassOptions {
      * `echoChar` prints or deletions on backspace. This is to make the repeated
      * `echoChar`s look more realistic.
      * 
-     * @default [10,100]
+     * @default [5,50]
      */
     repeatDelay?: [number, number];
 }
@@ -235,8 +235,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
     let echoChar = '*';
     let echoRepeatMin = 0;
     let echoRepeatMax = 0;
-    let repeatDelayMin = 10;
-    let repeatDelayMax = 100;
+    let repeatDelayMin = 5;
+    let repeatDelayMax = 50;
     let errors: EncodingErrors = 'surrogateescape';
 
     if (typeof options === 'string') {
@@ -330,22 +330,44 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         let promptEndInit = false;
         let promptEnd = column;
 
-        let buffer: Buffer|null = null;
+        let buffer = Buffer.alloc(2048);
         let offset = 0;
+        let size = 0;
         let ended = false;
 
-        let readResolve: (buffer: Buffer|null) => void;
+        let readResolve: () => void;
         let readReject: (error: Error) => void;
-        let readPromise: Promise<Buffer|null>|null = null;
+        let readPromise: Promise<void>|null = null;
 
-        const onData = (buffer: Buffer) => {
-            readResolve(buffer);
+        const onData = (input: Buffer) => {
+            const remSize = size - offset;
+            if (input.byteLength + remSize > buffer.length) {
+                const newBuffer = Buffer.alloc(remSize + input.byteLength);
+
+                buffer.copy(newBuffer, 0, offset, size);
+                input.copy(newBuffer, remSize);
+
+                buffer = newBuffer;
+                offset = 0;
+                size = remSize + input.byteLength;
+            } else if (input.byteLength + size > buffer.length) {
+                buffer.copyWithin(0, offset, size);
+                size -= offset;
+                offset = 0;
+
+                input.copy(buffer, size);
+                size += input.byteLength;
+            } else {
+                input.copy(buffer, size);
+                size += input.byteLength;
+            }
             readPromise = null;
+            readResolve();
         };
 
         const onError = (error: Error) => {
-            readReject(error);
             readPromise = null;
+            readReject(error);
 
             rtty?.off('data',  onData);
             rtty?.off('error', onError);
@@ -353,8 +375,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         };
 
         const onEnd = () => {
-            readResolve(null);
             readPromise = null;
+            readResolve();
 
             rtty?.off('data',  onData);
             rtty?.off('error', onError);
@@ -380,13 +402,10 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         wtty.write('\x1b[6n');
 
         async function readByte(): Promise<number> {
-            if (!buffer || offset >= buffer.byteLength) {
+            if (offset >= size) {
                 if (ended) {
                     return -1;
                 }
-
-                offset = 0;
-                buffer = null;
 
                 if (!readPromise) {
                     readPromise = new Promise((resolve, reject) => {
@@ -395,9 +414,9 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                     });
                 }
 
-                buffer = await readPromise;
+                await readPromise;
 
-                if (!buffer?.length || ended) {
+                if (offset >= size || ended) {
                     ended = true;
                     return -1;
                 }
@@ -407,13 +426,10 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         }
 
         async function peekByte(): Promise<number> {
-            if (!buffer || offset >= buffer.byteLength) {
+            if (offset >= size) {
                 if (ended) {
                     return -1;
                 }
-
-                offset = 0;
-                buffer = null;
 
                 if (!readPromise) {
                     readPromise = new Promise((resolve, reject) => {
@@ -422,9 +438,9 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                     });
                 }
 
-                buffer = await readPromise;
+                await readPromise;
 
-                if (!buffer?.length || ended) {
+                if (offset >= size || ended) {
                     ended = true;
                     return -1;
                 }
@@ -448,6 +464,9 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             async function writeEcho(): Promise<void> {
                 let width = 0;
                 if (echoRepeatMax) {
+                    // it's to late now to get the cursor position event
+                    promptEndInit = true;
+
                     const count = echoRepeatMin === echoRepeatMax ?
                         echoRepeatMin :
                         randomInt(echoRepeatMin, echoRepeatMax + 1);
@@ -590,7 +609,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                     let escapeTimer: NodeJS.Timeout|null = setTimeout(async () => {
                         escapeTimer = null;
                         ended = true;
-                        readResolve?.(null);
+                        readResolve?.();
                     }, 25);
 
                     try {
@@ -641,7 +660,6 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                                     param2 = 0;
                                     for (;;) {
                                         byte = await readByte();
-
                                         if (byte < 0) {
                                             return null;
                                         }

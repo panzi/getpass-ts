@@ -110,7 +110,7 @@ export interface GetPassOptions {
      * `echoChar` prints or deletions on backspace. This is to make the repeated
      * `echoChar`s look more realistic.
      * 
-     * @default [10,100]
+     * @default [5,50]
      */
     repeatDelay?: [number, number];
 }
