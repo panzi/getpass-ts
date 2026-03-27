@@ -48,10 +48,6 @@ function isNodeError<T extends ErrorConstructor>(error: unknown, errorType: T): 
     return error instanceof errorType;
 }
 
-function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 function isCont(byte: number): boolean {
     return byte >= 0x80 && byte < 0xC0;
 }
@@ -335,6 +331,32 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         let size = 0;
         let ended = false;
 
+        let sleepTimer: NodeJS.Timeout|null = null;
+        let sleepResolve: (() => void)|null = null;
+
+        // when keystrokes come in faster than the repeat delay allows, skip the delay
+        function stopSleep(): void {
+            if (sleepTimer) {
+                clearTimeout(sleepTimer);
+                sleepTimer = null;
+                sleepResolve?.();
+                sleepResolve = null;
+            }
+        }
+
+        function sleep(ms: number): Promise<void> {
+            return new Promise(resolve => {
+                stopSleep();
+
+                sleepResolve = resolve;
+                sleepTimer = setTimeout(() => {
+                    sleepTimer = null;
+                    sleepResolve = null;
+                    resolve();
+                }, ms);
+            });
+        }
+
         let readResolve: (() => void)|null = null;
         let readReject: ((error: Error) => void)|null = null;
         let readPromise: Promise<void>|null = null;
@@ -362,11 +384,13 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                 size += input.byteLength;
             }
             readPromise = null;
+            stopSleep();
             readResolve?.();
         };
 
         const onError = (error: Error) => {
             readPromise = null;
+            stopSleep();
             readReject?.(error);
 
             rtty?.off('data',  onData);
@@ -376,6 +400,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
 
         const onEnd = () => {
             readPromise = null;
+            stopSleep();
             readResolve?.();
 
             rtty?.off('data',  onData);
@@ -473,7 +498,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
 
                     if (wtty) {
                         for (let index = 0; index < count; ++ index) {
-                            if (index > 0) {
+                            if (index > 0 && offset >= size) {
                                 await sleep(
                                     repeatDelayMin === repeatDelayMax ? repeatDelayMin :
                                     randomInt(repeatDelayMin, repeatDelayMax + 1)
@@ -764,7 +789,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                             const width = widths.pop();
                             if (width) {
                                 for (let index = 0; index < width; ++ index) {
-                                    if (index > 0) {
+                                    if (index > 0 && offset >= size) {
                                         await sleep(
                                             repeatDelayMin === repeatDelayMax ? repeatDelayMin :
                                             randomInt(repeatDelayMin, repeatDelayMax + 1)
