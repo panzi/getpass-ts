@@ -335,8 +335,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         let size = 0;
         let ended = false;
 
-        let readResolve: () => void;
-        let readReject: (error: Error) => void;
+        let readResolve: (() => void)|null = null;
+        let readReject: ((error: Error) => void)|null = null;
         let readPromise: Promise<void>|null = null;
 
         const onData = (input: Buffer) => {
@@ -362,12 +362,12 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                 size += input.byteLength;
             }
             readPromise = null;
-            readResolve();
+            readResolve?.();
         };
 
         const onError = (error: Error) => {
             readPromise = null;
-            readReject(error);
+            readReject?.(error);
 
             rtty?.off('data',  onData);
             rtty?.off('error', onError);
@@ -376,7 +376,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
 
         const onEnd = () => {
             readPromise = null;
-            readResolve();
+            readResolve?.();
 
             rtty?.off('data',  onData);
             rtty?.off('error', onError);
