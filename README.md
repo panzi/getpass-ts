@@ -9,6 +9,13 @@ Simple CLI password prompt for NodeJS for Unix(-like) operating systems. This
 is inspired by [arekinath/node-getpass](https://github.com/arekinath/node-getpass),
 but uses TypeScript and promises instead of callbacks.
 
+Install
+-------
+
+```bash
+npm install --save @panzi/getpass
+```
+
 Example
 -------
 
