@@ -8,9 +8,6 @@
   ],
   "license": "MIT",
   "author": "Mathias Panzenböck",
-  "type": "module",
-  "main": "./build/index.js",
-  "types": "./build/index.d.ts",
   "homepage": "https://github.com/panzi/getpass-ts#readme",
   "bugs": {
     "url": "https://github.com/panzi/getpass-ts/issues"
@@ -19,9 +16,24 @@
     "type": "git",
     "url": "git+https://github.com/panzi/getpass-ts.git"
   },
+  "main": "./build/cjs/index.js",
+  "types": "./build/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/types/index.d.ts",
+      "require": "./build/cjs/index.js",
+      "import": "./build/esm/index.mjs",
+      "default": "./build/esm/index.mjs"
+    }
+  },
   "scripts": {
     "test": "jest",
-    "build": "tsc"
+    "clean": "rm -rf build",
+    "build": "npm run build:types && npm run build:cjs && npm run build:esm",
+    "build:clean": "npm run clean && npm run build",
+    "build:types": "npx tsc --outDir build/types --declaration --emitDeclarationOnly",
+    "build:cjs": "npx tsc --module commonjs --outDir build/cjs --declaration",
+    "build:esm": "npx tsc --module es2022 --outDir build/esm && node ./fix-esm.mjs"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

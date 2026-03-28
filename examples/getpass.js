@@ -1,4 +1,4 @@
-import { getPass } from '../build/index.js';
+import { getPass } from '../build/cjs/index.js';
 
 /** @typedef {import('../src/index.js').Encoding} Encoding */
 /** @typedef {import('../src/index.js').EncodingErrors} EncodingErrors */
@@ -18,7 +18,7 @@ function help() {
                                     of times between MIN and MAX (inclusve).
                                     [default: 0]
     --repeat-delay=TIME|MIN..MAX    Range of a random delay between repeated
-                                    CHAR prints and deletions. [default: [0,80]]
+                                    CHAR prints and deletions. [default: [5,50]]
     --encoding=ENCODING
 
         Parse password using ENCODING. Encoding errors are handled like Python's
@@ -49,6 +49,12 @@ function help() {
                               system.
 
         [default: surrogateescape]
+
+    --buffer-size=SIZE              Size of the internal buffer to use. Will
+                                    grow if needed. [default: 2048]
+    --tty=PATH                      The TTY device to use.
+                                    [default: /dev/tty with fallback to
+                                     /dev/stdin + /dev/stdout]
 `);
 }
 
