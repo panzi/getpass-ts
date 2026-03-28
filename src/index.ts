@@ -149,6 +149,24 @@ export interface GetPassOptions {
      * @default '/dev/tty' with fallback to '/dev/stdin' + '/dev/stdout'
      */
     tty?: string;
+
+    /**
+     * Abort prompt (return `null`) when this signal fires.
+     */
+    signal?: AbortSignal;
+
+    /**
+     * Milliseconds to wait for an escape character to be accepted as the user
+     * wanting to abort.
+     * 
+     * A single escape character might be the start of an escape sequence or
+     * the user pressing escape in order to abort input. The only way to
+     * distinguish between the two is to wait for more input and if none (or
+     * a second escape) comes its the user wanting to abort.
+     * 
+     * @default 25
+     */
+    escapeTimeout?: number;
 }
 
 /**
@@ -250,6 +268,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
     let errors: EncodingErrors = 'surrogateescape';
     let bufferSize = 2048;
     let ttyPath: string|undefined;
+    let signal: AbortSignal|undefined;
+    let escapeTimeout = 25;
 
     if (typeof options === 'string') {
         prompt = options;
@@ -263,7 +283,10 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             repeatDelay: oRepeatDelay,
             bufferSize: oBufferSize,
             tty: oTTY,
+            signal: oSignal,
+            escapeTimeout: oEscapeTimeout,
         } = options;
+
         if (oPrompt !== undefined) {
             prompt = oPrompt;
         }
@@ -331,6 +354,15 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         if (oTTY !== undefined) {
             ttyPath = oTTY;
         }
+
+        if (oEscapeTimeout !== undefined) {
+            escapeTimeout = oEscapeTimeout;
+            if (!isFinite(escapeTimeout) || escapeTimeout < 0) {
+                throw new RangeError(`escapeTimeout needs to be an >= 0: ${escapeTimeout}`);
+            }
+        }
+
+        signal = oSignal;
     }
 
     const utf8 = encoding === 'utf-8';
@@ -342,6 +374,10 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
     let wtty: tty.WriteStream|undefined;
 
     try {
+        if (signal?.aborted) {
+            return null;
+        }
+
         rtty = new tty.ReadStream(rfd.fd);
         wtty = new tty.WriteStream(wfd.fd);
 
@@ -392,6 +428,14 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         let readReject: ((error: Error) => void)|null = null;
         let readPromise: Promise<void>|null = null;
 
+        const onAbort = () => {
+            ended = true;
+            readPromise = null;
+            size = offset;
+            cancelSleep();
+            readResolve?.();
+        };
+
         const onData = (input: Buffer) => {
             const remSize = size - offset;
             if (input.byteLength + remSize > buffer.length) {
@@ -440,6 +484,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                 }
             }
         };
+
+        signal?.addEventListener('abort', onAbort);
 
         rtty.on('data',   onData);
         rtty.on('error',  onError);
@@ -654,11 +700,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                 if (byte === ESCAPE) {
                     // see: https://en.wikipedia.org/wiki/ANSI_escape_code#Terminal_input_sequences
 
-                    let escapeTimer: NodeJS.Timeout|null = setTimeout(async () => {
-                        escapeTimer = null;
-                        ended = true;
-                        readResolve?.();
-                    }, 25);
+                    let escapeTimer: NodeJS.Timeout|null = setTimeout(onAbort, escapeTimeout);
 
                     try {
                         byte = await readByte();
@@ -852,6 +894,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             rtty.off('error',  onError);
             rtty.off('end',    onEnd);
             wtty.off('resize', onResize);
+            signal?.removeEventListener('abort', onAbort);
         }
     } finally {
         try {
@@ -879,22 +922,24 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
 export default getPass;
 
 interface TTY {
-    rfd: fs.FileHandle;
     wfd: fs.FileHandle;
+    rfd: fs.FileHandle;
 }
 
 async function openTTY(ttyPath?: string): Promise<TTY> {
-    let rfd: fs.FileHandle|null = null;
+    // Opening read second so that there is no await between it and attaching
+    // onData event handlers and actually reading.
     let wfd: fs.FileHandle|null = null;
+    let rfd: fs.FileHandle|null = null;
 
     if (ttyPath) {
-        rfd = await fs.open(ttyPath, 'r');
+        wfd = await fs.open(ttyPath, 'w');
 
         try {
-            wfd = await fs.open(ttyPath, 'w');
+            rfd = await fs.open(ttyPath, 'r');
         } catch (error) {
             try {
-                rfd?.close();
+                wfd?.close();
             } catch (error2) {
                 const errors = [error, error2];
                 throw new AggregateError(errors, errors.join('\n'));
@@ -907,27 +952,27 @@ async function openTTY(ttyPath?: string): Promise<TTY> {
     }
 
     try {
-        rfd = await fs.open('/dev/tty', 'r');
         wfd = await fs.open('/dev/tty', 'w');
+        rfd = await fs.open('/dev/tty', 'r');
 
         return { rfd, wfd };
     } catch (error) {
         const errors: unknown[] = [error];
 
-        try { rfd?.close(); } catch (error2) { errors.push(error2); }
         try { wfd?.close(); } catch (error2) { errors.push(error2); }
+        try { rfd?.close(); } catch (error2) { errors.push(error2); }
 
         if (isNodeError(error, Error) && (error.code === 'ENOENT' || error.code === 'EACCES')) {
             // There is no fs.fdopen(number) in NodeJS?
-            rfd = await fs.open('/dev/stdin', 'r');
+            wfd = await fs.open('/dev/stdout', 'w');
 
             try {
-                wfd = await fs.open('/dev/stdout', 'w');
+                rfd = await fs.open('/dev/stdin', 'r');
             } catch (error2) {
                 errors.push(error2);
 
                 try {
-                    rfd?.close();
+                    wfd?.close();
                 } catch (error3) {
                     errors.push(error3);
                 }

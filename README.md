@@ -134,6 +134,24 @@ export interface GetPassOptions {
      * @default '/dev/tty' with fallback to '/dev/stdin' + '/dev/stdout'
      */
     tty?: string;
+
+    /**
+     * Abort prompt (return `null`) when this signal fires.
+     */
+    signal?: AbortSignal;
+
+    /**
+     * Milliseconds to wait for an escape character to be accepted as the user
+     * wanting to abort.
+     * 
+     * A single escape character might be the start of an escape sequence or
+     * the user pressing escape in order to abort input. The only way to
+     * distinguish between the two is to wait for more input and if none (or
+     * a second escape) comes its the user wanting to abort.
+     * 
+     * @default 25
+     */
+    escapeTimeout?: number;
 }
 
 export async function getPass(prompt?: string): Promise<string|null>;

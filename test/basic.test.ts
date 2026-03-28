@@ -29,6 +29,7 @@ async function getpass({
     kill,
     bufferSize,
     tty,
+    timeout,
 }: {
     prompt?: string;
     encoding?: Encoding;
@@ -39,6 +40,7 @@ async function getpass({
     kill?: string;
     bufferSize?: number;
     tty?: string;
+    timeout?: number;
 }): Promise<GetPassOutput> {
     return new Promise((resolve, reject) => {
         try {
@@ -70,6 +72,10 @@ async function getpass({
 
             if (tty) {
                 args.push(`--tty=${tty}`);
+            }
+
+            if (timeout !== undefined) {
+                args.push(`--timeout=${timeout}`);
             }
 
             const cEncoding = (
@@ -188,6 +194,7 @@ type TestCase = {
     exception?: string;
     bufferSize?: number;
     tty?: string;
+    timeout?: number;
 };
 
 const tests: TestCase[] = [
@@ -354,12 +361,18 @@ const tests: TestCase[] = [
         input: 'foo\n',
         exception: 'SystemError [ERR_TTY_INIT_FAILED]: TTY initialization failed: uv_tty_init returned EINVAL (invalid argument)',
     },
+    {
+        name: 'Abort Signal',
+        input: 'foobar',
+        password: null,
+        timeout: 100,
+    },
 ];
 
 describe('Basic Tests', () => {
     for (const { name, prompt, encoding, errors, echoChar, echoRepeat,
                  input, echo, password, signal, exitCode, output,
-                 exception, kill, bufferSize, tty,
+                 exception, kill, bufferSize, tty, timeout,
                } of tests) {
         test(name, async () => {
             const res = await getpass({
@@ -372,6 +385,7 @@ describe('Basic Tests', () => {
                 input,
                 bufferSize,
                 tty,
+                timeout,
             });
 
             if (echo !== undefined) {

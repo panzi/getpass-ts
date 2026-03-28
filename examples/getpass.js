@@ -55,6 +55,7 @@ function help() {
     --tty=PATH                      The TTY device to use.
                                     [default: /dev/tty with fallback to
                                      /dev/stdin + /dev/stdout]
+    --timeout=TIME                  Abort after TIME milliseconds.
 `);
 }
 
@@ -88,6 +89,9 @@ async function main() {
 
     /** @type {string=} */
     let tty;
+
+    /** @type {number=} */
+    let timeout;
 
     /** @type {string[]} */
     let nonopts = [];
@@ -211,6 +215,15 @@ async function main() {
                     tty = optarg;
                     break;
 
+                case 'timeout':
+                    timeout = +optarg;
+                    if (!isFinite(timeout) || timeout < 0) {
+                        console.error(`illegal argument to --${opt}=${optarg}`);
+                        usage();
+                        process.exit(1);
+                    }
+                    break;
+
                 case 'help':
                     help();
                     return;
@@ -232,6 +245,21 @@ async function main() {
         process.exit(1);
     }
 
+    /** @type {AbortSignal=} */
+    let signal;
+
+    /** @type {NodeJS.Timeout?} */
+    let timer = null;
+
+    if (timeout !== undefined) {
+        const abort = new AbortController();
+        signal = abort.signal;
+        timer = setTimeout(() => {
+            timer = null;
+            abort.abort();
+        }, timeout);
+    }
+
     const password = await getPass({
         prompt,
         echoChar,
@@ -247,7 +275,14 @@ async function main() {
         errors,
         bufferSize,
         tty,
+        signal,
     });
+
+    if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+    }
+
     const json = JSON.stringify({ password });
     if (encoding && encoding !== 'binary') {
         process.stdout.write(Buffer.from(json + '\n', encoding));
