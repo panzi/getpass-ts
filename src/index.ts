@@ -345,9 +345,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         rtty = new tty.ReadStream(rfd.fd);
         wtty = new tty.WriteStream(wfd.fd);
 
-        rtty.resume();
         rtty.setRawMode(true);
-        rtty.resume();
 
         // turn on bracketed paste mode and disable line wrapping
         wtty.write('\x1B[?2004h\x1b[?7l');
@@ -368,7 +366,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         let sleepResolve: (() => void)|null = null;
 
         // when keystrokes come in faster than the repeat delay allows, skip the delay
-        function stopSleep(): void {
+        function cancelSleep(): void {
             if (sleepTimer) {
                 clearTimeout(sleepTimer);
                 sleepTimer = null;
@@ -379,7 +377,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
 
         function sleep(ms: number): Promise<void> {
             return new Promise(resolve => {
-                stopSleep();
+                cancelSleep();
 
                 sleepResolve = resolve;
                 sleepTimer = setTimeout(() => {
@@ -417,28 +415,20 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                 size += input.byteLength;
             }
             readPromise = null;
-            stopSleep();
+            cancelSleep();
             readResolve?.();
         };
 
         const onError = (error: Error) => {
             readPromise = null;
-            stopSleep();
+            cancelSleep();
             readReject?.(error);
-
-            rtty?.off('data',  onData);
-            rtty?.off('error', onError);
-            rtty?.off('end',   onEnd);
         };
 
         const onEnd = () => {
             readPromise = null;
-            stopSleep();
+            cancelSleep();
             readResolve?.();
-
-            rtty?.off('data',  onData);
-            rtty?.off('error', onError);
-            rtty?.off('end',   onEnd);
         };
 
         const onResize = () => {
@@ -456,58 +446,58 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         rtty.on('end',    onEnd);
         wtty.on('resize', onResize);
 
-        // request actual cursor position
-        wtty.write('\x1b[6n');
-
-        async function readByte(): Promise<number> {
-            if (offset >= size) {
-                if (ended) {
-                    return -1;
-                }
-
-                if (!readPromise) {
-                    readPromise = new Promise((resolve, reject) => {
-                        readResolve = resolve;
-                        readReject  = reject;
-                    });
-                }
-
-                await readPromise;
-
-                if (offset >= size || ended) {
-                    ended = true;
-                    return -1;
-                }
-            }
-
-            return buffer[offset ++];
-        }
-
-        async function peekByte(): Promise<number> {
-            if (offset >= size) {
-                if (ended) {
-                    return -1;
-                }
-
-                if (!readPromise) {
-                    readPromise = new Promise((resolve, reject) => {
-                        readResolve = resolve;
-                        readReject  = reject;
-                    });
-                }
-
-                await readPromise;
-
-                if (offset >= size || ended) {
-                    ended = true;
-                    return -1;
-                }
-            }
-
-            return buffer[offset];
-        }
-
         try {
+            // request actual cursor position
+            wtty.write('\x1b[6n');
+
+            async function readByte(): Promise<number> {
+                if (offset >= size) {
+                    if (ended) {
+                        return -1;
+                    }
+
+                    if (!readPromise) {
+                        readPromise = new Promise((resolve, reject) => {
+                            readResolve = resolve;
+                            readReject  = reject;
+                        });
+                    }
+
+                    await readPromise;
+
+                    if (offset >= size || ended) {
+                        ended = true;
+                        return -1;
+                    }
+                }
+
+                return buffer[offset ++];
+            }
+
+            async function peekByte(): Promise<number> {
+                if (offset >= size) {
+                    if (ended) {
+                        return -1;
+                    }
+
+                    if (!readPromise) {
+                        readPromise = new Promise((resolve, reject) => {
+                            readResolve = resolve;
+                            readReject  = reject;
+                        });
+                    }
+
+                    await readPromise;
+
+                    if (offset >= size || ended) {
+                        ended = true;
+                        return -1;
+                    }
+                }
+
+                return buffer[offset];
+            }
+
             const password: number[] = [];
             const widths: number[] = [];
             let pasteNesting = 0;
@@ -747,7 +737,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                                                 break;
                                         }
                                     }
-                                } else if (param2 != -1 && byte === 0x52) { // 'R'
+                                } else if (param2 !== -1 && byte === 0x52) { // 'R'
                                     // cursor position
                                     column = param2;
                                     row = param1;
@@ -776,7 +766,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                                 }
                             }
 
-                            if (param2 != -1 && byte === 0x52) { // 'R'
+                            if (param2 !== -1 && byte === 0x52) { // 'R'
                                 // cursor position
                                 column = param2;
                                 row = param1;
@@ -868,10 +858,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             wtty?.write('\n');
         } finally {
             try {
-                if (rtty) {
-                    rtty.setRawMode(false);
-                    rtty.pause();
-                }
+                rtty?.setRawMode(false);
             } finally {
                 try {
                     // turn off bracketed paste mode and enable line wrapping
