@@ -56,6 +56,9 @@ function help() {
                                     [default: /dev/tty with fallback to
                                      /dev/stdin + /dev/stdout]
     --timeout=TIME                  Abort after TIME milliseconds.
+    --escape-timeout=TIME           Accept escape character as abort after
+                                    TIME milliseconds of no other input.
+                                    [default: 25]
 `);
 }
 
@@ -92,6 +95,9 @@ async function main() {
 
     /** @type {number=} */
     let timeout;
+
+    /** @type {number=} */
+    let escapeTimeout;
 
     /** @type {string[]} */
     let nonopts = [];
@@ -224,6 +230,15 @@ async function main() {
                     }
                     break;
 
+                case 'escape-timeout':
+                    escapeTimeout = +optarg;
+                    if (!isFinite(escapeTimeout) || escapeTimeout < 0) {
+                        console.error(`illegal argument to --${opt}=${optarg}`);
+                        usage();
+                        process.exit(1);
+                    }
+                    break;
+
                 case 'help':
                     help();
                     return;
@@ -276,6 +291,7 @@ async function main() {
         bufferSize,
         tty,
         signal,
+        escapeTimeout,
     });
 
     if (timer !== null) {
