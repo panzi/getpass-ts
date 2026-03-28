@@ -27,6 +27,8 @@ async function getpass({
     echoRepeat,
     input,
     kill,
+    bufferSize,
+    tty,
 }: {
     prompt?: string;
     encoding?: Encoding;
@@ -35,6 +37,8 @@ async function getpass({
     echoRepeat?: number;
     input: string|Buffer|((term: pty.IPty) => void);
     kill?: string;
+    bufferSize?: number;
+    tty?: string;
 }): Promise<GetPassOutput> {
     return new Promise((resolve, reject) => {
         try {
@@ -58,6 +62,14 @@ async function getpass({
 
             if (echoRepeat !== undefined) {
                 args.push(`--echo-repeat=${echoRepeat}`);
+            }
+
+            if (bufferSize !== undefined) {
+                args.push(`--buffer-size=${bufferSize}`);
+            }
+
+            if (tty) {
+                args.push(`--tty=${tty}`);
             }
 
             const cEncoding = (
@@ -174,6 +186,8 @@ type TestCase = {
     exitCode?: number;
     output?: string|Buffer;
     exception?: string;
+    bufferSize?: number;
+    tty?: string;
 };
 
 const tests: TestCase[] = [
@@ -327,12 +341,25 @@ const tests: TestCase[] = [
         input: Buffer.from([0xF7, 0xBF, 0x0A]),
         exception: 'invalid bytes: [0xf7, 0xbf]'
     },
+
+    {
+        name: 'Buffer Resizing',
+        bufferSize: 1,
+        input: 'äÖß😀桁\n',
+        password: 'äÖß😀桁',
+    },
+    {
+        name: 'Not a TTY',
+        tty: '/dev/null',
+        input: 'foo\n',
+        exception: 'SystemError [ERR_TTY_INIT_FAILED]: TTY initialization failed: uv_tty_init returned EINVAL (invalid argument)',
+    },
 ];
 
 describe('Basic Tests', () => {
     for (const { name, prompt, encoding, errors, echoChar, echoRepeat,
                  input, echo, password, signal, exitCode, output,
-                 exception, kill,
+                 exception, kill, bufferSize, tty,
                } of tests) {
         test(name, async () => {
             const res = await getpass({
@@ -343,6 +370,8 @@ describe('Basic Tests', () => {
                 echoChar,
                 echoRepeat,
                 input,
+                bufferSize,
+                tty,
             });
 
             if (echo !== undefined) {

@@ -77,6 +77,12 @@ async function main() {
     /** @type {EncodingErrors=} */
     let errors;
 
+    /** @type {number=} */
+    let bufferSize;
+
+    /** @type {string=} */
+    let tty;
+
     /** @type {string[]} */
     let nonopts = [];
     let argind = 2;
@@ -186,6 +192,19 @@ async function main() {
                     }
                     break;
 
+                case 'buffer-size':
+                    bufferSize = +optarg;
+                    if (isNaN(bufferSize) || bufferSize < 1) {
+                        console.error(`illegal argument to --${opt}=${optarg}`);
+                        usage();
+                        process.exit(1);
+                    }
+                    break;
+
+                case 'tty':
+                    tty = optarg;
+                    break;
+
                 case 'help':
                     help();
                     return;
@@ -220,6 +239,8 @@ async function main() {
                      undefined,
         encoding,
         errors,
+        bufferSize,
+        tty,
     });
     const json = JSON.stringify({ password });
     if (encoding && encoding !== 'binary') {

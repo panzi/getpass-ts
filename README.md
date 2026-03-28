@@ -113,6 +113,20 @@ export interface GetPassOptions {
      * @default [5,50]
      */
     repeatDelay?: [number, number];
+
+    /**
+     * Initial buffer size, can grow if needed.
+     * 
+     * @default 2048
+     */
+    bufferSize?: number;
+
+    /**
+     * TTY device to open.
+     * 
+     * @default '/dev/tty' with fallback to '/dev/stdin' + '/dev/stdout'
+     */
+    tty?: string;
 }
 
 export async function getPass(prompt?: string): Promise<string|null>;

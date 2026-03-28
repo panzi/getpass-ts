@@ -135,6 +135,20 @@ export interface GetPassOptions {
      * @default [5,50]
      */
     repeatDelay?: [number, number];
+
+    /**
+     * Initial buffer size, can grow if needed.
+     * 
+     * @default 2048
+     */
+    bufferSize?: number;
+
+    /**
+     * TTY device to open.
+     * 
+     * @default '/dev/tty' with fallback to '/dev/stdin' + '/dev/stdout'
+     */
+    tty?: string;
 }
 
 /**
@@ -234,6 +248,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
     let repeatDelayMin = 5;
     let repeatDelayMax = 50;
     let errors: EncodingErrors = 'surrogateescape';
+    let bufferSize = 2048;
+    let ttyPath: string|undefined;
 
     if (typeof options === 'string') {
         prompt = options;
@@ -245,6 +261,8 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             echoChar: oEchoChar,
             echoRepeat: oEchoRepeat,
             repeatDelay: oRepeatDelay,
+            bufferSize: oBufferSize,
+            tty: oTTY,
         } = options;
         if (oPrompt !== undefined) {
             prompt = oPrompt;
@@ -298,13 +316,28 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                 throw new RangeError(`repeatDelay needs to be a [min, max] tuple of integers where min >= 0 and min <= max: [${oRepeatDelay}]`);
             }
         }
+
+        if (oBufferSize !== undefined) {
+            bufferSize = oBufferSize;
+            if (
+                !isFinite(bufferSize) ||
+                (bufferSize|0) !== bufferSize ||
+                bufferSize < 1
+            ) {
+                throw new RangeError(`bufferSize needs to be an integer >= 1: ${bufferSize}`);
+            }
+        }
+
+        if (oTTY !== undefined) {
+            ttyPath = oTTY;
+        }
     }
 
     const utf8 = encoding === 'utf-8';
     const raw  = encoding === 'latin1' || encoding === 'binary';
     const echoWidth = wcswidth(echoChar);
 
-    const { rfd, wfd } = await openTTY();
+    const { rfd, wfd } = await openTTY(ttyPath);
     let rtty: tty.ReadStream|undefined;
     let wtty: tty.WriteStream|undefined;
 
@@ -326,7 +359,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
         let promptEndInit = false;
         let promptEnd = column;
 
-        let buffer = Buffer.alloc(2048);
+        let buffer = Buffer.alloc(bufferSize);
         let offset = 0;
         let size = 0;
         let ended = false;
@@ -863,9 +896,28 @@ interface TTY {
     wfd: fs.FileHandle;
 }
 
-async function openTTY(): Promise<TTY> {
+async function openTTY(ttyPath?: string): Promise<TTY> {
     let rfd: fs.FileHandle|null = null;
     let wfd: fs.FileHandle|null = null;
+
+    if (ttyPath) {
+        rfd = await fs.open(ttyPath, 'r');
+
+        try {
+            wfd = await fs.open(ttyPath, 'w');
+        } catch (error) {
+            try {
+                rfd?.close();
+            } catch (error2) {
+                const errors = [error, error2];
+                throw new AggregateError(errors, errors.join('\n'));
+            }
+
+            throw error;
+        }
+
+        return { rfd, wfd };
+    }
 
     try {
         rfd = await fs.open('/dev/tty', 'r');
@@ -873,8 +925,10 @@ async function openTTY(): Promise<TTY> {
 
         return { rfd, wfd };
     } catch (error) {
-        try { rfd?.close(); } catch (error2) {}
-        try { wfd?.close(); } catch (error2) {}
+        const errors: unknown[] = [error];
+
+        try { rfd?.close(); } catch (error2) { errors.push(error2); }
+        try { wfd?.close(); } catch (error2) { errors.push(error2); }
 
         if (isNodeError(error, Error) && (error.code === 'ENOENT' || error.code === 'EACCES')) {
             // There is no fs.fdopen(number) in NodeJS?
@@ -883,12 +937,22 @@ async function openTTY(): Promise<TTY> {
             try {
                 wfd = await fs.open('/dev/stdout', 'w');
             } catch (error2) {
-                try { rfd?.close(); } catch (error2) {}
+                errors.push(error2);
 
-                throw error2;
+                try {
+                    rfd?.close();
+                } catch (error3) {
+                    errors.push(error3);
+                }
+
+                throw new AggregateError(errors, errors.join('\n'));
             }
 
             return { rfd, wfd };
+        }
+
+        if (errors.length > 1) {
+            throw new AggregateError(errors, errors.join('\n'));
         }
 
         throw error;
