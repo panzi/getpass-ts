@@ -1,6 +1,6 @@
 {
   "name": "@panzi/getpass",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Simple password prompt for the command line.",
   "keywords": [
     "password",
