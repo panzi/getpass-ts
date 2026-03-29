@@ -99,6 +99,24 @@ export interface GetPassOptions {
     echoChar?: string;
 
     /**
+     * Display width of `echoChar`.
+     * 
+     * If not given it is attempted to determine the display width with this
+     * fallback list of libraries:
+     * 
+     * * [wcwidth-o1](https://www.npmjs.com/package/wcwidth-o1)
+     * * [wcswidth](https://www.npmjs.com/package/wcwidth)
+     * * [simple-wcswidth](https://www.npmjs.com/package/simple-wcswidth)
+     * 
+     * If none of them are available this fallback method is used:
+     * 
+     * ```JavaScript
+     * echoChar.replace(/([^\n])\p{Mn}+/gu, '$1').replace(/\p{Emoji_Presentation}/gu, 'xx').length
+     * ```
+     */
+    echoCharWidth?: number;
+
+    /**
      * A [min, max] tuple of integers.
      * 
      * The `echoChar` is randomly repeated `n` times where `min` <= `n` and `n` <= `max`.
