@@ -33,12 +33,14 @@
     "build:clean": "npm run clean && npm run build",
     "build:types": "npx tsc --outDir build/types --declaration --emitDeclarationOnly",
     "build:cjs": "npx tsc --module commonjs --outDir build/cjs --declaration",
-    "build:esm": "npx tsc --module es2022 --outDir build/esm && node ./fix-esm.mjs"
+    "build:esm": "npx tsc --module es2022 --outDir build/esm && node ./fix-esm.mjs",
+    "build:doc": "typedoc src/index.ts"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
     "node-pty": "^1.1.0",
     "ts-jest": "^29.4.6",
+    "typedoc": "^0.28.18",
     "typescript": "^5.9.3"
   }
 }

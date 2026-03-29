@@ -1,6 +1,7 @@
 /node_modules
 /build
 /tmp
+/docs
 package-lock.json
 .*
 !.gitignore
