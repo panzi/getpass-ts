@@ -51,9 +51,10 @@ if (password === null) {
 Dependencies
 ------------
 
-This library has no hard dependencies, but for the width calculation on the
-`echoChar` various `wcswidth()` libraries are tried to be used and if none are
-available a simple fallback is used. The library fallback order is:
+This library has no hard dependencies, but if you enable echoing then for the
+width calculation on the `echoChar` various `wcswidth()` libraries are tried to
+be used and if none are available a simple fallback is used. The library
+fallback order is:
 
 * [wcwidth-o1](https://www.npmjs.com/package/wcwidth-o1)
 * [wcswidth](https://www.npmjs.com/package/wcwidth)
