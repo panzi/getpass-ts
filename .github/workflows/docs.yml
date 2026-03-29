@@ -44,7 +44,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # Add a dependency to the build job
     needs: docs
 
     # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
