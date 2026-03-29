@@ -1,4 +1,12 @@
 {
     "excludePrivate": true,
-    "gitRevision": "main"
+    "gitRevision": "main",
+    "externalSymbolLinkMappings": {
+        "@types/node": {
+            "__global.Buffer": "https://nodejs.org/api/buffer.html#buffer",
+        },
+        "typescript": {
+            "Error": "https://nodejs.org/api/errors.html#class-error"
+        }
+    }
 }

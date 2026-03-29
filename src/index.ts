@@ -60,17 +60,28 @@ const ESCAPE    = 0x001B;
 const BACKSPACE = 0x007F;
 
 /**
- * Encodings supported by `getPass()`.
+ * Encodings supported by {@link getPass}.
+ * 
+ * If `'binary'` is used then {@link getPass} will return a `Buffer` object.
  */
 export type Encoding = 'utf-8'|'latin1'|'ascii'|'binary';
 
 /**
- * Encoding error handling methods of `getPass()`.
+ * Encoding error handling methods of {@link getPass}.
+ * 
+ * * `'strict'` - Throw an {@link Error}.
+ * * `'ignore'` - Ignore the invalid bytes.
+ * * `'replace'` - Replace the invalid bytes with the unicode replacement
+ *   character � (`U+FFFD`).
+ * * `'surrogateescape'` - Encode invalid bytes as a surrogate code of
+ *   `U+DC00 + invalid_byte`. This is the same strategy Python uses for
+ *    interfacing with the operating system.
+ * 
  */
 export type EncodingErrors = 'strict'|'ignore'|'replace'|'surrogateescape';
 
 /**
- * Options for `getPass()`.
+ * Options for {@link getPass}.
  */
 export interface GetPassOptions {
     /**
@@ -82,7 +93,7 @@ export interface GetPassOptions {
     /**
      * Parse input to string using this encoding.
      * 
-     * If `'binary'` is passed `getPass()` will return a `Buffer` object.
+     * If `'binary'` is passed {@link getPass} will return a {@link Buffer} object.
      * 
      * @default 'utf-8'
      */
@@ -90,14 +101,6 @@ export interface GetPassOptions {
 
     /**
      * How do handle encoding errors.
-     * 
-     * * `'strict'` - Throw an `Error`.
-     * * `'ignore'` - Ignore the invalid bytes.
-     * * `'replace'` - Replace the invalid bytes with the unicode replacement
-     *   character � (`U+FFFD`).
-     * * `'surrogateescape'` - Encode invalid bytes as a surrogate code of
-     *   `U+DC00 + invalid_byte`. This is the same strategy Python uses for
-     *    interfacing with the operating system.
      * 
      * @default 'surrogateescape'
      */
@@ -114,7 +117,7 @@ export interface GetPassOptions {
     echoChar?: string;
 
     /**
-     * Display width of `echoChar`.
+     * Display width of {@link echoChar}.
      * 
      * If not given it is attempted to determine the display width with this
      * fallback list of libraries:
@@ -134,10 +137,10 @@ export interface GetPassOptions {
     /**
      * A [min, max] tuple of integers.
      * 
-     * The `echoChar` is randomly repeated `n` times where `min` <= `n` and `n` <= `max`.
-     * If `echoChar` is passed but `echoRepeat` isn't, then the `echoChar` is written
-     * exactly once by input byte. This is to obfuscate the password length for anyone
-     * snooping.
+     * The {@link echoChar} is randomly repeated `n` times where `min` <= `n`
+     * and `n` <= `max`. If {@link echoChar} is passed but {@link echoRepeat}
+     * isn't, then the {@link echoChar} is written exactly once by input byte.
+     * This is to obfuscate the password length for anyone snooping.
      * 
      * @default undefined
      */
@@ -147,8 +150,8 @@ export interface GetPassOptions {
      * A [min, max] tuple of integers.
      * 
      * This is a range for a random delay in milliseconds between the repeated
-     * `echoChar` prints or deletions on backspace. This is to make the repeated
-     * `echoChar`s look more realistic.
+     * {@link echoChar} prints or deletions on backspace. This is to make the
+     * repeated {@link echoChar}s look more realistic.
      * 
      * @default [5,50]
      */
@@ -224,7 +227,7 @@ export async function getPass(prompt?: string): Promise<string|null>;
 export async function getPass(options: GetPassOptions & { encoding: 'utf-8'|'latin1'|'ascii' }): Promise<string|null>;
 
 /**
- * Read a password from the terminal as a `Buffer`.
+ * Read a password from the terminal as a {@link Buffer}.
  * 
  * The user can delete the entered password via backspace, but no other editing
  * features are supported at the moment. A password can contain a new line
