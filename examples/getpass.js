@@ -70,6 +70,9 @@ async function main() {
     let echoChar;
 
     /** @type {number=} */
+    let echoCharWidth;
+
+    /** @type {number=} */
     let echoRepeatMin;
 
     /** @type {number=} */
@@ -132,6 +135,15 @@ async function main() {
 
                 case 'echo-char':
                     echoChar = optarg;
+                    break;
+
+                case 'echo-char-width':
+                    echoCharWidth = +optarg;
+                    if (isNaN(echoCharWidth) || echoCharWidth < 0) {
+                        console.error(`illegal argument to --${opt}=${optarg}`);
+                        usage();
+                        process.exit(1);
+                    }
                     break;
 
                 case 'echo-repeat':
@@ -292,6 +304,7 @@ async function main() {
         tty,
         signal,
         escapeTimeout,
+        echoCharWidth,
     });
 
     if (timer !== null) {

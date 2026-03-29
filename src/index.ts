@@ -114,6 +114,24 @@ export interface GetPassOptions {
     echoChar?: string;
 
     /**
+     * Display width of `echoChar`.
+     * 
+     * If not given it is attempted to determine the display width with this
+     * fallback list of libraries:
+     * 
+     * * [wcwidth-o1](https://www.npmjs.com/package/wcwidth-o1)
+     * * [wcswidth](https://www.npmjs.com/package/wcwidth)
+     * * [simple-wcswidth](https://www.npmjs.com/package/simple-wcswidth)
+     * 
+     * If none of them are available this fallback method is used:
+     * 
+     * ```JavaScript
+     * echoChar.replace(/([^\n])\p{Mn}+/gu, '$1').replace(/\p{Emoji_Presentation}/gu, 'xx').length
+     * ```
+     */
+    echoCharWidth?: number;
+
+    /**
      * A [min, max] tuple of integers.
      * 
      * The `echoChar` is randomly repeated `n` times where `min` <= `n` and `n` <= `max`.
@@ -261,6 +279,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
     let prompt = 'Password: ';
     let encoding: Encoding = 'utf-8';
     let echoChar = '*';
+    let echoWidth = 1;
     let echoRepeatMin = 0;
     let echoRepeatMax = 0;
     let repeatDelayMin = 5;
@@ -285,6 +304,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             tty: oTTY,
             signal: oSignal,
             escapeTimeout: oEscapeTimeout,
+            echoCharWidth: oEchoWidth,
         } = options;
 
         if (oPrompt !== undefined) {
@@ -314,6 +334,16 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
             }
         }
 
+        if (oEchoWidth !== undefined) {
+            if (
+                !isFinite(oEchoWidth) ||
+                (oEchoWidth|0) !== oEchoWidth ||
+                oEchoWidth < 0
+            ) {
+                throw new RangeError(`echoCharWidth needs to be an integer >= 0: ${oEchoWidth}`);
+            }
+        }
+
         if (oEchoChar !== undefined) {
             echoChar = oEchoChar;
             if (/[\x00-\x1F\x7F]/.test(echoChar)) {
@@ -323,6 +353,7 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
                 echoRepeatMin = 1;
                 echoRepeatMax = 1;
             }
+            echoWidth = oEchoWidth ?? wcswidth(echoChar);
         }
 
         if (oRepeatDelay) {
@@ -367,7 +398,6 @@ export async function getPass(options?: GetPassOptions|string): Promise<string|B
 
     const utf8 = encoding === 'utf-8';
     const raw  = encoding === 'latin1' || encoding === 'binary';
-    const echoWidth = wcswidth(echoChar);
 
     const { rfd, wfd } = await openTTY(ttyPath);
     let rtty: tty.ReadStream|undefined;

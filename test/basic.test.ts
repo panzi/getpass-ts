@@ -24,6 +24,7 @@ async function getpass({
     encoding,
     errors,
     echoChar,
+    echoCharWidth,
     echoRepeat,
     input,
     kill,
@@ -35,6 +36,7 @@ async function getpass({
     encoding?: Encoding;
     errors?: EncodingErrors;
     echoChar?: string;
+    echoCharWidth?: number;
     echoRepeat?: number;
     input: string|Buffer|((term: pty.IPty) => void);
     kill?: string;
@@ -60,6 +62,10 @@ async function getpass({
 
             if (echoChar) {
                 args.push(`--echo-char=${echoChar}`);
+            }
+
+            if (echoCharWidth !== undefined) {
+                args.push(`--echo-char-width=${echoCharWidth}`);
             }
 
             if (echoRepeat !== undefined) {
@@ -183,6 +189,7 @@ type TestCase = {
     encoding?: Encoding;
     errors?: EncodingErrors;
     echoChar?: string;
+    echoCharWidth?: number;
     echoRepeat?: number;
     input: string|Buffer;
     kill?: string;
@@ -372,7 +379,7 @@ const tests: TestCase[] = [
 describe('Basic Tests', () => {
     for (const { name, prompt, encoding, errors, echoChar, echoRepeat,
                  input, echo, password, signal, exitCode, output,
-                 exception, kill, bufferSize, tty, timeout,
+                 exception, kill, bufferSize, tty, timeout, echoCharWidth,
                } of tests) {
         test(name, async () => {
             const res = await getpass({
@@ -381,6 +388,7 @@ describe('Basic Tests', () => {
                 encoding,
                 errors,
                 echoChar,
+                echoCharWidth,
                 echoRepeat,
                 input,
                 bufferSize,
