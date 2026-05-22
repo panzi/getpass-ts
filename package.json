@@ -37,7 +37,7 @@
     "build:doc": "typedoc src/index.ts"
   },
   "devDependencies": {
-    "@types/node": "^25.5.0",
+    "@types/node": "^25.9.1",
     "node-pty": "^1.1.0",
     "ts-jest": "^29.4.10",
     "typedoc": "^0.28.19",
