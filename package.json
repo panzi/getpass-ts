@@ -39,8 +39,8 @@
   "devDependencies": {
     "@types/node": "^25.5.0",
     "node-pty": "^1.1.0",
-    "ts-jest": "^29.4.6",
-    "typedoc": "^0.28.18",
-    "typescript": "^5.9.3"
+    "ts-jest": "^29.4.10",
+    "typedoc": "^0.28.19",
+    "typescript": "^6.0.3"
   }
 }
