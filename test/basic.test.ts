@@ -395,7 +395,9 @@ describe('Basic Tests', () => {
                 tty,
                 timeout,
             });
-            console.log(name, res);
+            if (res.exitCode !== 0) {
+                console.log(name, res.output.toString('utf-8'))
+            }
 
             if (echo !== undefined) {
                 expect(res.echo && stripEscapeSequences(res.echo).trimEnd()).toEqual(echo);
